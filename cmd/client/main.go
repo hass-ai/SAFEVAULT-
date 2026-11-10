@@ -41,7 +41,7 @@ func main() {
 			printUsage()
 			os.Exit(1)
 		}
-		err = runRegister(cfg, args[0])
+		err = runRegister(cfg)
 
 	case "upload":
 		if len(args) != 1 {

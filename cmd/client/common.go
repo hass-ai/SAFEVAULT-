@@ -2,42 +2,74 @@ package main
 
 import (
 	"crypto/ed25519"
+	"crypto/rand"
+	"crypto/tls"
+	"crypto/x509"
 	"errors"
+	"os"
 
 	"google.golang.org/grpc"
 )
 
 // generateKey crée une paire de clés Ed25519 et enregistre la clé privée dans path.
 func generateKey(path string) (ed25519.PrivateKey, error) {
-	return nil, errors.New("generateKey : pas encore implémenté")
+	_, privateKey, err := ed25519.GenerateKey(rand.Reader)
+	if err != nil {
+		return nil, err
+	}
+	if err := os.WriteFile(path, privateKey, 0o600); err != nil {
+		return nil, err
+	}
+	return privateKey, nil
 }
 
 // loadKey lit la clé privée enregistrée dans path.
 func loadKey(path string) (ed25519.PrivateKey, error) {
-	return nil, errors.New("loadKey : pas encore implémenté")
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return nil, err
+	}
+	if len(data) != ed25519.PrivateKeySize {
+		return nil, errors.New("clé privée invalide")
+	}
+	return ed25519.PrivateKey(data), nil
 }
 
 // sign signe un message précédé d'une étiquette qui indique son usage.
 func sign(key ed25519.PrivateKey, label string, message []byte) []byte {
-	return nil
+	data := append([]byte(label), 0)
+	data = append(data, message...)
+	return ed25519.Sign(key, data)
 }
 
-// connectCoordinator ouvre une connexion TLS au coordinateur.
-func connectCoordinator(cfg Config) (*grpc.ClientConn, error) {
-	return nil, errors.New("connectCoordinator : pas encore implémenté")
+// connectCoordinator ouvre une connexion TLS au coordinateur et renvoie son client gRPC.
+func connectCoordinator(cfg Config) (pb.CoordinatorClient, *grpc.ClientConn, error) {
+	conn, err := connect(cfg, cfg.CoordinatorAddr)
+	if err != nil {
+		return nil, nil, err
+	}
+	return pb.NewCoordinatorClient(conn), conn, nil
 }
 
-// connectNode ouvre une connexion TLS au nœud d'adresse addr.
-func connectNode(cfg Config, addr string) (*grpc.ClientConn, error) {
-	return nil, errors.New("connectNode : pas encore implémenté")
+// connectNode ouvre une connexion TLS au nœud d'adresse addr et renvoie son client gRPC.
+func connectNode(cfg Config, addr string) (pb.NodeClient, *grpc.ClientConn, error) {
+	conn, err := connect(cfg, addr)
+	if err != nil {
+		return nil, nil, err
+	}
+	return pb.NewNodeClient(conn), conn, nil
 }
 
-// runRegister crée la clé de l'utilisateur et l'inscrit auprès du coordinateur.
-func runRegister(cfg Config, username string) error {
-	return errors.New("register : pas encore implémenté")
-}
-
-// runList affiche les fichiers accessibles à l'utilisateur.
-func runList(cfg Config) error {
-	return errors.New("ls : pas encore implémenté")
+// connect ouvre une connexion gRPC en TLS, en vérifiant le certificat du serveur avec la CA.
+func connect(cfg Config, addr string) (*grpc.ClientConn, error) {
+	caPEM, err := os.ReadFile(cfg.CACertPath)
+	if err != nil {
+		return nil, err
+	}
+	pool := x509.NewCertPool()
+	if !pool.AppendCertsFromPEM(caPEM) {
+		return nil, errors.New("certificat de la CA invalide")
+	}
+	creds := credentials.NewTLS(&tls.Config{RootCAs: pool, MinVersion: tls.VersionTLS13})
+	return grpc.NewClient(addr, grpc.WithTransportCredentials(creds))
 }
