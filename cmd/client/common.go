@@ -6,9 +6,12 @@ import (
 	"crypto/tls"
 	"crypto/x509"
 	"errors"
+	"fmt"
 	"os"
+	"time"
 
 	"google.golang.org/grpc"
+	"google.golang.org/grpc/credentials"
 )
 
 // generateKey crée une paire de clés Ed25519 et enregistre la clé privée dans path.
@@ -72,4 +75,18 @@ func connect(cfg Config, addr string) (*grpc.ClientConn, error) {
 	}
 	creds := credentials.NewTLS(&tls.Config{RootCAs: pool, MinVersion: tls.VersionTLS13})
 	return grpc.NewClient(addr, grpc.WithTransportCredentials(creds))
+}
+
+// proof construit la preuve d'identité d'une requête destinée au nœud x.
+func proof(key ed25519.PrivateKey, label string, x uint32, fileID string, epoch uint64) *pb.Proof {
+	nonce := make([]byte, 16)
+	rand.Read(nonce)
+	timestamp := time.Now().Unix()
+	message := fmt.Sprintf("%d|%s|%d|%d|%x", x, fileID, epoch, timestamp, nonce)
+	return &pb.Proof{
+		PublicKey: key.Public().(ed25519.PublicKey),
+		Timestamp: timestamp,
+		Nonce:     nonce,
+		Signature: sign(key, label, []byte(message)),
+	}
 }

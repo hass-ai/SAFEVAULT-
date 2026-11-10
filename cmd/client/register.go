@@ -7,6 +7,8 @@ import (
 	"fmt"
 	"os"
 	"time"
+
+	"google.golang.org/grpc/metadata"
 )
 
 // runRegister crée la clé de l'utilisateur et l'inscrit auprès du coordinateur.
