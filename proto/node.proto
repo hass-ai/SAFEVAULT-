@@ -1,0 +1,89 @@
+// Contrats gRPC des nœuds de stockage : service Node (client → nœud)
+// et service Renewal (nœud → nœud, renouvellement des parts).
+syntax = "proto3";
+
+package safevault;
+
+option go_package = "safevault/proto;pb";
+
+// Preuve d'identité jointe à chaque requête adressée à un nœud.
+// La signature Ed25519 porte sur : étiquette || 0x00 || "x|file_id|epoch|timestamp|nonce_hex".
+message Proof {
+  bytes public_key = 1;
+  int64 timestamp = 2; // secondes Unix
+  bytes nonce = 3;
+  bytes signature = 4;
+}
+
+// Part de la clé d'un fichier, détenue par le nœud d'abscisse x.
+message Share {
+  uint32 x = 1;
+  bytes value = 2;
+  uint64 epoch = 3;
+}
+
+// Bloc chiffré d'un fichier.
+message Block {
+  string file_id = 1;
+  uint32 index = 2;
+  bytes data = 3;
+  Proof proof = 4;
+}
+
+message PutShareRequest {
+  string file_id = 1;
+  Share share = 2;
+  Proof proof = 3;
+}
+
+message PutShareResponse {}
+
+message GetShareRequest {
+  string file_id = 1;
+  uint64 epoch = 2; // époque attendue par le client
+  Proof proof = 3;
+}
+
+message GetShareResponse {
+  Share share = 1;
+}
+
+message PutBlocksResponse {
+  uint32 stored = 1; // nombre de blocs stockés
+}
+
+message GetBlocksRequest {
+  string file_id = 1;
+  Proof proof = 2;
+}
+
+service Node {
+  // Dépose la part de la clé du fichier sur le nœud.
+  rpc PutShare(PutShareRequest) returns (PutShareResponse);
+  // Renvoie la part du nœud ; FAILED_PRECONDITION si l'époque ne correspond pas.
+  rpc GetShare(GetShareRequest) returns (GetShareResponse);
+  // Reçoit les blocs chiffrés d'un fichier en flux.
+  rpc PutBlocks(stream Block) returns (PutBlocksResponse);
+  // Renvoie les blocs chiffrés d'un fichier en flux.
+  rpc GetBlocks(GetBlocksRequest) returns (stream Block);
+}
+
+// Sous-part d'un fichier envoyée pendant un renouvellement.
+message SubShare {
+  string file_id = 1;
+  bytes value = 2;
+}
+
+message DeliverSubSharesRequest {
+  uint32 from_x = 1;       // abscisse du nœud émetteur
+  uint32 to_x = 2;         // abscisse du nœud destinataire
+  uint64 target_epoch = 3; // époque visée par le renouvellement
+  repeated SubShare sub_shares = 4;
+}
+
+message DeliverSubSharesResponse {}
+
+service Renewal {
+  // Reçoit les sous-parts d'un autre nœud pour l'époque cible.
+  rpc DeliverSubShares(DeliverSubSharesRequest) returns (DeliverSubSharesResponse);
+}

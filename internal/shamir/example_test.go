@@ -5,8 +5,8 @@ import (
 	"crypto/rand"
 	"fmt"
 
-	"github.com/hass-ai/SAFEVAULT-/internal/crypto"
-	"github.com/hass-ai/SAFEVAULT-/internal/shamir"
+	"safevault/internal/crypto"
+	"safevault/internal/shamir"
 )
 
 // Parcours complet côté client : secret → clé du fichier → blocs chiffrés,
