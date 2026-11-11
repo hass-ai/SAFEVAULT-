@@ -6,7 +6,7 @@
 //
 // Commandes :
 //
-//	register <nom>                     crée la clé de l'utilisateur et l'inscrit auprès du coordinateur
+//	register                           crée la clé de l'utilisateur et l'inscrit auprès du coordinateur
 //	upload <fichier>                   chiffre et dépose un fichier
 //	download <file_id> [-o sortie]     récupère et déchiffre un fichier
 //	ls                                 liste les fichiers accessibles
@@ -37,7 +37,7 @@ func main() {
 	var err error
 	switch command {
 	case "register":
-		if len(args) != 1 {
+		if len(args) != 0 {
 			printUsage()
 			os.Exit(1)
 		}
@@ -76,7 +76,7 @@ func printUsage() {
 	fmt.Println(`Utilisation : client <commande> [arguments]
 
 Commandes :
-  register <nom>                  crée la clé de l'utilisateur et l'inscrit
+  register                        crée la clé de l'utilisateur et l'inscrit
   upload <fichier>                chiffre et dépose un fichier
   download <file_id> <sortie>     récupère et déchiffre un fichier
   ls                              liste les fichiers accessibles`)

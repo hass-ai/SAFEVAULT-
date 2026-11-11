@@ -10,6 +10,8 @@ import (
 	"os"
 	"time"
 
+	pb "safevault/proto"
+
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials"
 )
@@ -74,7 +76,7 @@ func connect(cfg Config, addr string) (*grpc.ClientConn, error) {
 		return nil, errors.New("certificat de la CA invalide")
 	}
 	creds := credentials.NewTLS(&tls.Config{RootCAs: pool, MinVersion: tls.VersionTLS13})
-	return grpc.NewClient(addr, grpc.WithTransportCredentials(creds))
+	return grpc.NewClient(addr, grpc.WithTransportCredentials(creds), grpc.WithDefaultCallOptions(grpc.MaxCallRecvMsgSize(32<<20)))
 }
 
 // proof construit la preuve d'identité d'une requête destinée au nœud x.

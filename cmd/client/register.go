@@ -8,13 +8,15 @@ import (
 	"os"
 	"time"
 
+	pb "safevault/proto"
+
 	"google.golang.org/grpc/metadata"
 )
 
 // runRegister crée la clé de l'utilisateur et l'inscrit auprès du coordinateur.
 func runRegister(cfg Config) error {
 	if cfg.Username == "" {
-		return errors.New("définissez SAFEVAULT_USERNAME")
+		return errors.New("définissez CLIENT_USERNAME")
 	}
 	if _, err := os.Stat(cfg.KeyPath); err == nil {
 		return fmt.Errorf("une clé existe déjà dans %s", cfg.KeyPath)

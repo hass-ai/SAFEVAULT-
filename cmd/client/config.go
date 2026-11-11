@@ -11,7 +11,7 @@ type Config struct {
 
 func LoadConfig() Config {
 	return Config{
-		Username:        getEnv("USERNAME", ""),
+		Username:        getEnv("CLIENT_USERNAME", ""),
 		CoordinatorAddr: getEnv("COORD_ADDR", "localhost:7443"),
 		CACertPath:      getEnv("CA_PATH", "certs/ca.crt"),
 		KeyPath:         getEnv("KEY_PATH", "certs/client.key"),
