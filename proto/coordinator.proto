@@ -1,0 +1,112 @@
+// Contrat gRPC du service de coordination : service Coordinator (client → coordinateur).
+syntax = "proto3";
+
+package safevault;
+
+option go_package = "safevault/proto;pb";
+
+// ---------- Inscription et connexion ----------
+
+message RegisterRequest {
+  string username = 1;
+  bytes public_key = 2; // clé publique Ed25519 de l'utilisateur
+  // Signature Ed25519 sur : "safevault/register/v1" || 0x00 || username || public_key
+  bytes signature = 3;
+}
+
+message RegisterResponse {}
+
+message GetChallengeRequest {
+  string username = 1;
+}
+
+message GetChallengeResponse {
+  bytes challenge = 1; // nombre aléatoire à signer, à usage unique
+}
+
+message LoginRequest {
+  string username = 1;
+  bytes challenge = 2;
+  // Signature Ed25519 sur : "safevault/login/v1" || 0x00 || challenge
+  bytes signature = 3;
+}
+
+message LoginResponse {
+  string token = 1; // jeton de session, envoyé ensuite dans l'en-tête "authorization: Bearer <jeton>"
+}
+
+// ---------- Fichiers ----------
+
+// Nœud de stockage, tel que le coordinateur le décrit au client.
+message NodeInfo {
+  string address = 1; // "hôte:port", par exemple "node-3:7444"
+  uint32 x = 2;       // abscisse du nœud dans le partage de Shamir (égale à son NODE_X)
+}
+
+// Informations publiques nécessaires pour relire un fichier (aucune clé dedans).
+message Manifest {
+  uint32 block_count = 1;
+  repeated bytes block_hashes = 2; // SHA-256 de chaque bloc chiffré, dans l'ordre
+  bytes nonce_prefix = 3;          // préfixe des nonces AES-GCM
+  uint64 size = 4;                 // taille du fichier en clair, en octets
+}
+
+message CreateFileRequest {
+  string name = 1;
+  uint64 size = 2;
+}
+
+message CreateFileResponse {
+  string file_id = 1;
+  uint64 epoch = 2;               // époque à laquelle rattacher les parts
+  repeated NodeInfo nodes = 3;
+  uint32 t = 4;                   // seuil
+  uint32 n = 5;                   // nombre de parts
+}
+
+message ConfirmUploadRequest {
+  string file_id = 1;
+  Manifest manifest = 2;
+}
+
+message ConfirmUploadResponse {}
+
+message ListFilesRequest {}
+
+message FileInfo {
+  string file_id = 1;
+  string name = 2;
+  uint64 size = 3;
+}
+
+message ListFilesResponse {
+  repeated FileInfo files = 1;
+}
+
+message GetFileRequest {
+  string file_id = 1;
+}
+
+message GetFileResponse {
+  uint64 epoch = 1;               // époque actuelle des parts
+  uint32 t = 2;
+  Manifest manifest = 3;
+  repeated NodeInfo nodes = 4;
+}
+
+service Coordinator {
+  // Inscrit un utilisateur avec sa clé publique.
+  rpc Register(RegisterRequest) returns (RegisterResponse);
+  // Donne un défi à signer pour se connecter.
+  rpc GetChallenge(GetChallengeRequest) returns (GetChallengeResponse);
+  // Vérifie la signature du défi et renvoie un jeton de session.
+  rpc Login(LoginRequest) returns (LoginResponse);
+  // Commence le dépôt d'un fichier : identifiant, époque et nœuds.
+  rpc CreateFile(CreateFileRequest) returns (CreateFileResponse);
+  // Valide le dépôt une fois les parts et les blocs envoyés aux nœuds.
+  rpc ConfirmUpload(ConfirmUploadRequest) returns (ConfirmUploadResponse);
+  // Liste les fichiers accessibles à l'utilisateur connecté.
+  rpc ListFiles(ListFilesRequest) returns (ListFilesResponse);
+  // Donne les informations nécessaires pour relire un fichier.
+  rpc GetFile(GetFileRequest) returns (GetFileResponse);
+}
