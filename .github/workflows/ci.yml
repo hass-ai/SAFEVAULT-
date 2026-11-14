@@ -1,0 +1,27 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+      - name: Formatage
+        run: test -z "$(gofmt -l .)" || { gofmt -l .; exit 1; }
+      - name: Analyse statique
+        run: go vet ./...
+      - name: Tests
+        run: go test -race ./...
+
+  docker:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Image du nœud
+        run: docker build --build-arg CMD=node -t safevault-node .
