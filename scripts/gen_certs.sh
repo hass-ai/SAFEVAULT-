@@ -2,7 +2,7 @@
 # Génère la CA interne de SafeVault et un certificat par composant.
 # Certificats de développement uniquement : ils ne doivent pas être commités.
 #
-# Usage : scripts/gen-certs.sh [dossier de sortie]   (défaut : certs)
+# Usage : scripts/gen_certs.sh [dossier de sortie]   (défaut : certs)
 set -euo pipefail
 
 OUT="${1:-certs}"

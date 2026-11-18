@@ -32,11 +32,11 @@ supprimez celui de votre dossier dès que vous y ajoutez vos fichiers.
 ## Nœud de stockage
 
 Un nœud conserve les blocs chiffrés des fichiers et une part de la clé de chacun.
-Il sert les services gRPC `Node` (client → nœud) et `Renewal` (nœud → nœud) décrits dans `proto/node.proto`, en TLS 1.3.
+Il sert, en TLS 1.3, les services gRPC décrits dans `proto/node.proto` : `Node` (client → nœud), `Renewal` (nœud → nœud), `Epoch` (coordinateur → nœud), ainsi que le health check standard de gRPC.
 
 ```sh
 NODE_X=1 LISTEN_ADDR=:7444 DATA_DIR=./data/node1 \
-TLS_CERT_PATH=certs/node1.crt TLS_KEY_PATH=certs/node1.key \
+TLS_CERT_PATH=certs/node-1.crt TLS_KEY_PATH=certs/node-1.key CA_PATH=certs/ca.crt \
 go run ./cmd/node
 ```
 
@@ -47,6 +47,7 @@ go run ./cmd/node
 | `DATA_DIR` | Dossier des données : `blocks/` et `node.db` | `/data` |
 | `TLS_CERT_PATH` | Certificat du nœud, signé par la CA | `certs/node.crt` |
 | `TLS_KEY_PATH` | Clé privée du certificat | `certs/node.key` |
+| `CA_PATH` | Certificat de la CA, pour authentifier le coordinateur et les autres nœuds | `certs/ca.crt` |
 
 Ce que fait le nœud aujourd'hui :
 
@@ -55,9 +56,14 @@ Ce que fait le nœud aujourd'hui :
 - la part doit être déposée avant les blocs ;
 - les blocs sont écrits sur le disque un par un, à leur arrivée, sans charger le fichier entier en mémoire ;
 - les anciennes parts sont effacées de la base (`secure_delete`) quand une nouvelle époque est validée ;
-- `DeliverSubShares` enregistre les sous-parts reçues ; le calcul de la nouvelle part arrivera avec le renouvellement.
+- renouvellement des parts en deux phases, piloté par le coordinateur (service `Epoch`) :
+  - `Prepare` : pour chaque fichier, le nœud tire δ avec δ(0) = 0, envoie δ(j) à chaque autre participant (`DeliverSubShares`), attend les sous-parts de tous, puis calcule sa nouvelle part, gardée en attente ;
+  - `Commit` : la nouvelle part remplace l'ancienne, qui est effacée, ainsi que les sous-parts ;
+  - `Abort` : les parts en attente et les sous-parts sont effacées, l'ancienne part reste en service ;
+  - le coordinateur fixe le seuil et la liste des participants, la même pour tous ; si un participant manque, `Prepare` échoue et le coordinateur abandonne l'époque ;
+- mTLS pour les services internes : `Epoch` exige le certificat `coordinator`, `DeliverSubShares` celui de `node-<x>` de l'émetteur. Les utilisateurs n'ont pas de certificat : ils s'authentifient par leurs preuves signées.
 
-Pas encore fait : mTLS entre composants, authentification des nœuds émetteurs de sous-parts.
+Pas encore fait : récupération de la part d'un nœud absent pendant un renouvellement (tant qu'un nœud est en panne, les renouvellements sont abandonnés).
 
 Pour régénérer le code Go après une modification d'un `.proto` : `make proto`
 (nécessite `protoc`, `protoc-gen-go` et `protoc-gen-go-grpc`).

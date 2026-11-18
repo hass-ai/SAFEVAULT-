@@ -108,6 +108,29 @@ func TestCommitEpoch(t *testing.T) {
 	}
 }
 
+func TestCommittedSharesAndHasPending(t *testing.T) {
+	s := openStore(t)
+
+	s.PutShare("f2", Share{X: 1, Value: []byte("b"), Epoch: 1})
+	s.PutShare("f1", Share{X: 1, Value: []byte("a"), Epoch: 1})
+	s.PutPendingShare("f1", Share{X: 1, Value: []byte("a2"), Epoch: 2})
+
+	shares, err := s.CommittedShares()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(shares) != 2 || shares[0].FileID != "f1" || string(shares[0].Share.Value) != "a" {
+		t.Fatalf("parts en service %+v", shares)
+	}
+
+	if ok, _ := s.HasPending(2); !ok {
+		t.Fatal("part en attente de l'époque 2 non vue")
+	}
+	if ok, _ := s.HasPending(3); ok {
+		t.Fatal("part en attente vue pour l'époque 3")
+	}
+}
+
 func TestAbortEpoch(t *testing.T) {
 	s := openStore(t)
 

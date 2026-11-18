@@ -3,9 +3,11 @@ package main
 import (
 	"bytes"
 	"context"
+	"crypto/tls"
 	"errors"
 	"io"
 	"slices"
+	"sync"
 
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
@@ -17,18 +19,23 @@ import (
 // maxShareSize borne la taille d'une part ou d'une sous-part (un scalaire fait 32 octets).
 const maxShareSize = 64
 
-// nodeServer implémente les services Node (client → nœud) et Renewal (nœud → nœud).
+// nodeServer implémente les services Node (client → nœud), Renewal (nœud → nœud)
+// et Epoch (coordinateur → nœud).
 type nodeServer struct {
 	pb.UnimplementedNodeServer
 	pb.UnimplementedRenewalServer
+	pb.UnimplementedEpochServer
 
 	x      uint32 // abscisse du nœud dans le partage de Shamir
 	store  *storage.Store
 	proofs *proofVerifier
+	peers  *tls.Config // configuration TLS pour appeler les autres nœuds (mTLS)
+
+	prepareMu sync.Mutex // un seul Prepare à la fois
 }
 
-func newNodeServer(x uint32, store *storage.Store) *nodeServer {
-	return &nodeServer{x: x, store: store, proofs: newProofVerifier()}
+func newNodeServer(x uint32, store *storage.Store, peers *tls.Config) *nodeServer {
+	return &nodeServer{x: x, store: store, proofs: newProofVerifier(), peers: peers}
 }
 
 // PutShare enregistre la part du nœud pour un fichier. La clé qui dépose la première part
@@ -161,9 +168,12 @@ func (s *nodeServer) GetBlocks(req *pb.GetBlocksRequest, stream pb.Node_GetBlock
 }
 
 // DeliverSubShares enregistre les sous-parts envoyées par un autre nœud pour un renouvellement.
-// Le calcul de la nouvelle part et la validation de l'époque viendront avec le code du
-// renouvellement. L'émetteur sera authentifié par mTLS (sprint 4).
+// L'émetteur doit présenter le certificat "node-<from_x>" : un tiers ne peut pas injecter
+// de sous-parts, et un nœud ne peut pas se faire passer pour un autre.
 func (s *nodeServer) DeliverSubShares(ctx context.Context, req *pb.DeliverSubSharesRequest) (*pb.DeliverSubSharesResponse, error) {
+	if err := requirePeer(ctx, nodeName(req.FromX)); err != nil {
+		return nil, err
+	}
 	if req.ToX != s.x {
 		return nil, status.Errorf(codes.InvalidArgument, "sous-parts pour x = %d, ce nœud est x = %d", req.ToX, s.x)
 	}

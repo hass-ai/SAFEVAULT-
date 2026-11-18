@@ -182,6 +182,40 @@ func (s *Store) Share(fileID string) (Share, error) {
 	return share, err
 }
 
+// FileShare est la part en service d'un fichier.
+type FileShare struct {
+	FileID string
+	Share  Share
+}
+
+// CommittedShares renvoie les parts en service de tous les fichiers, triées par fichier.
+func (s *Store) CommittedShares() ([]FileShare, error) {
+	rows, err := s.db.Query(`SELECT file_id, x, value, epoch FROM shares WHERE status = ? ORDER BY file_id`,
+		StatusCommitted)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var shares []FileShare
+	for rows.Next() {
+		var fs FileShare
+		if err := rows.Scan(&fs.FileID, &fs.Share.X, &fs.Share.Value, &fs.Share.Epoch); err != nil {
+			return nil, err
+		}
+		shares = append(shares, fs)
+	}
+	return shares, rows.Err()
+}
+
+// HasPending indique si des parts en attente existent pour l'époque epoch.
+func (s *Store) HasPending(epoch uint64) (bool, error) {
+	var count int
+	err := s.db.QueryRow(`SELECT COUNT(*) FROM shares WHERE epoch = ? AND status = ?`,
+		epoch, StatusPending).Scan(&count)
+	return count > 0, err
+}
+
 // PutPendingShare enregistre la nouvelle part calculée pendant un renouvellement,
 // sans toucher à la part en service.
 func (s *Store) PutPendingShare(fileID string, share Share) error {

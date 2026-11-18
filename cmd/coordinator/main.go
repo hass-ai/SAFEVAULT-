@@ -13,6 +13,12 @@
 //	CA_PATH         certificat de la CA interne, pour vérifier les nœuds (défaut certs/ca.crt)
 //	NODES           nœuds de stockage, "x=hôte:port,..." (défaut 1=node-1:7444,...,n=node-n:7444)
 //	HEARTBEAT_MS    période des sondes des nœuds, en millisecondes (défaut 2000)
+//	RENEWAL_INTERVAL  période du renouvellement des parts, durée Go comme "10m" ou "30s"
+//	                  (défaut 10m ; "0" le désactive)
+//
+// Le signal SIGUSR1 lance un renouvellement immédiat (démo) :
+//
+//	docker compose kill -s SIGUSR1 coordinator
 package main
 
 import (
@@ -38,6 +44,7 @@ type Config struct {
 	Nodes       map[uint32]string // x -> "hôte:port"
 
 	HeartbeatInterval time.Duration
+	RenewalInterval   time.Duration
 }
 
 func loadConfig() (Config, error) {
@@ -63,6 +70,10 @@ func loadConfig() (Config, error) {
 	if heartbeat < 100 {
 		return Config{}, fmt.Errorf("HEARTBEAT_MS doit valoir au moins 100")
 	}
+	renewal, err := time.ParseDuration(getEnv("RENEWAL_INTERVAL", "10m"))
+	if err != nil || renewal < 0 {
+		return Config{}, fmt.Errorf("RENEWAL_INTERVAL doit être une durée positive, par exemple 10m")
+	}
 	return Config{
 		ListenAddr:        getEnv("LISTEN_ADDR", ":7443"),
 		DataDir:           getEnv("DATA_DIR", "/data"),
@@ -73,6 +84,7 @@ func loadConfig() (Config, error) {
 		CAPath:            getEnv("CA_PATH", "certs/ca.crt"),
 		Nodes:             nodes,
 		HeartbeatInterval: time.Duration(heartbeat) * time.Millisecond,
+		RenewalInterval:   renewal,
 	}, nil
 }
 
@@ -118,6 +130,15 @@ func main() {
 	defer cancelBackground()
 	c.runBackground(background)
 
+	renewNow := make(chan os.Signal, 1)
+	signal.Notify(renewNow, syscall.SIGUSR1)
+	go func() {
+		for range renewNow {
+			log.Println("renouvellement demandé (SIGUSR1)")
+			c.renew(background)
+		}
+	}()
+
 	stop := make(chan os.Signal, 1)
 	signal.Notify(stop, syscall.SIGINT, syscall.SIGTERM)
 	go func() {
@@ -128,8 +149,8 @@ func main() {
 		c.grpc.GracefulStop()
 	}()
 
-	log.Printf("coordinateur à l'écoute sur %s, n = %d, t = %d, %d nœuds, données dans %s",
-		cfg.ListenAddr, cfg.N, cfg.T, len(cfg.Nodes), cfg.DataDir)
+	log.Printf("coordinateur à l'écoute sur %s, n = %d, t = %d, %d nœuds, renouvellement toutes les %v, données dans %s",
+		cfg.ListenAddr, cfg.N, cfg.T, len(cfg.Nodes), cfg.RenewalInterval, cfg.DataDir)
 	if err := c.grpc.Serve(listener); err != nil {
 		log.Fatal(err)
 	}
