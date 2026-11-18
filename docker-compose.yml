@@ -1,0 +1,71 @@
+# Déploiement local de SafeVault : 5 nœuds de stockage.
+# Le coordinateur sera ajouté quand cmd/coordinator existera.
+#
+#   scripts/gen-certs.sh      # une seule fois
+#   docker compose up --build
+#   docker compose stop node-3   # simule la panne d'un nœud
+
+x-node: &node
+  build:
+    context: .
+    args:
+      CMD: node
+  restart: unless-stopped
+  environment: &node-env
+    LISTEN_ADDR: ":7444"
+    DATA_DIR: /data
+    TLS_CERT_PATH: /certs/node.crt
+    TLS_KEY_PATH: /certs/node.key
+
+services:
+  node-1:
+    <<: *node
+    environment: { <<: *node-env, NODE_X: "1" }
+    ports: ["7441:7444"]
+    volumes:
+      - node-1-data:/data
+      - ./certs/node-1.crt:/certs/node.crt:ro
+      - ./certs/node-1.key:/certs/node.key:ro
+
+  node-2:
+    <<: *node
+    environment: { <<: *node-env, NODE_X: "2" }
+    ports: ["7442:7444"]
+    volumes:
+      - node-2-data:/data
+      - ./certs/node-2.crt:/certs/node.crt:ro
+      - ./certs/node-2.key:/certs/node.key:ro
+
+  node-3:
+    <<: *node
+    environment: { <<: *node-env, NODE_X: "3" }
+    ports: ["7443:7444"]
+    volumes:
+      - node-3-data:/data
+      - ./certs/node-3.crt:/certs/node.crt:ro
+      - ./certs/node-3.key:/certs/node.key:ro
+
+  node-4:
+    <<: *node
+    environment: { <<: *node-env, NODE_X: "4" }
+    ports: ["7444:7444"]
+    volumes:
+      - node-4-data:/data
+      - ./certs/node-4.crt:/certs/node.crt:ro
+      - ./certs/node-4.key:/certs/node.key:ro
+
+  node-5:
+    <<: *node
+    environment: { <<: *node-env, NODE_X: "5" }
+    ports: ["7445:7444"]
+    volumes:
+      - node-5-data:/data
+      - ./certs/node-5.crt:/certs/node.crt:ro
+      - ./certs/node-5.key:/certs/node.key:ro
+
+volumes:
+  node-1-data:
+  node-2-data:
+  node-3-data:
+  node-4-data:
+  node-5-data:
