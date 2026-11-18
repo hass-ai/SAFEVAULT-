@@ -251,6 +251,7 @@ const (
 // For semantics around ctx use and closing/ending streaming RPCs, please refer to https://pkg.go.dev/google.golang.org/grpc/?tab=doc#ClientConn.NewStream.
 type RenewalClient interface {
 	// Reçoit les sous-parts d'un autre nœud pour l'époque cible.
+	// Réservé aux nœuds : l'appelant présente le certificat "node-<from_x>".
 	DeliverSubShares(ctx context.Context, in *DeliverSubSharesRequest, opts ...grpc.CallOption) (*DeliverSubSharesResponse, error)
 }
 
@@ -277,6 +278,7 @@ func (c *renewalClient) DeliverSubShares(ctx context.Context, in *DeliverSubShar
 // for forward compatibility.
 type RenewalServer interface {
 	// Reçoit les sous-parts d'un autre nœud pour l'époque cible.
+	// Réservé aux nœuds : l'appelant présente le certificat "node-<from_x>".
 	DeliverSubShares(context.Context, *DeliverSubSharesRequest) (*DeliverSubSharesResponse, error)
 	mustEmbedUnimplementedRenewalServer()
 }
@@ -340,6 +342,200 @@ var Renewal_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "DeliverSubShares",
 			Handler:    _Renewal_DeliverSubShares_Handler,
+		},
+	},
+	Streams:  []grpc.StreamDesc{},
+	Metadata: "node.proto",
+}
+
+const (
+	Epoch_Prepare_FullMethodName = "/safevault.Epoch/Prepare"
+	Epoch_Commit_FullMethodName  = "/safevault.Epoch/Commit"
+	Epoch_Abort_FullMethodName   = "/safevault.Epoch/Abort"
+)
+
+// EpochClient is the client API for Epoch service.
+//
+// For semantics around ctx use and closing/ending streaming RPCs, please refer to https://pkg.go.dev/google.golang.org/grpc/?tab=doc#ClientConn.NewStream.
+//
+// Renouvellement en deux phases, piloté par le coordinateur.
+// Réservé au coordinateur : l'appelant présente le certificat "coordinator".
+// Aucune part ni sous-part ne passe par ces messages.
+type EpochClient interface {
+	// Phase 1 : échange les sous-parts avec les autres participants, puis calcule et garde
+	// EN ATTENTE les parts de l'époque. Les parts en service restent inchangées.
+	Prepare(ctx context.Context, in *PrepareRequest, opts ...grpc.CallOption) (*EpochResponse, error)
+	// Phase 2 : les parts en attente deviennent les parts en service, les anciennes sont effacées.
+	Commit(ctx context.Context, in *EpochRequest, opts ...grpc.CallOption) (*EpochResponse, error)
+	// Abandon : les parts en attente et les sous-parts de l'époque sont effacées.
+	Abort(ctx context.Context, in *EpochRequest, opts ...grpc.CallOption) (*EpochResponse, error)
+}
+
+type epochClient struct {
+	cc grpc.ClientConnInterface
+}
+
+func NewEpochClient(cc grpc.ClientConnInterface) EpochClient {
+	return &epochClient{cc}
+}
+
+func (c *epochClient) Prepare(ctx context.Context, in *PrepareRequest, opts ...grpc.CallOption) (*EpochResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(EpochResponse)
+	err := c.cc.Invoke(ctx, Epoch_Prepare_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *epochClient) Commit(ctx context.Context, in *EpochRequest, opts ...grpc.CallOption) (*EpochResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(EpochResponse)
+	err := c.cc.Invoke(ctx, Epoch_Commit_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *epochClient) Abort(ctx context.Context, in *EpochRequest, opts ...grpc.CallOption) (*EpochResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(EpochResponse)
+	err := c.cc.Invoke(ctx, Epoch_Abort_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+// EpochServer is the server API for Epoch service.
+// All implementations must embed UnimplementedEpochServer
+// for forward compatibility.
+//
+// Renouvellement en deux phases, piloté par le coordinateur.
+// Réservé au coordinateur : l'appelant présente le certificat "coordinator".
+// Aucune part ni sous-part ne passe par ces messages.
+type EpochServer interface {
+	// Phase 1 : échange les sous-parts avec les autres participants, puis calcule et garde
+	// EN ATTENTE les parts de l'époque. Les parts en service restent inchangées.
+	Prepare(context.Context, *PrepareRequest) (*EpochResponse, error)
+	// Phase 2 : les parts en attente deviennent les parts en service, les anciennes sont effacées.
+	Commit(context.Context, *EpochRequest) (*EpochResponse, error)
+	// Abandon : les parts en attente et les sous-parts de l'époque sont effacées.
+	Abort(context.Context, *EpochRequest) (*EpochResponse, error)
+	mustEmbedUnimplementedEpochServer()
+}
+
+// UnimplementedEpochServer must be embedded to have
+// forward compatible implementations.
+//
+// NOTE: this should be embedded by value instead of pointer to avoid a nil
+// pointer dereference when methods are called.
+type UnimplementedEpochServer struct{}
+
+func (UnimplementedEpochServer) Prepare(context.Context, *PrepareRequest) (*EpochResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method Prepare not implemented")
+}
+func (UnimplementedEpochServer) Commit(context.Context, *EpochRequest) (*EpochResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method Commit not implemented")
+}
+func (UnimplementedEpochServer) Abort(context.Context, *EpochRequest) (*EpochResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method Abort not implemented")
+}
+func (UnimplementedEpochServer) mustEmbedUnimplementedEpochServer() {}
+func (UnimplementedEpochServer) testEmbeddedByValue()               {}
+
+// UnsafeEpochServer may be embedded to opt out of forward compatibility for this service.
+// Use of this interface is not recommended, as added methods to EpochServer will
+// result in compilation errors.
+type UnsafeEpochServer interface {
+	mustEmbedUnimplementedEpochServer()
+}
+
+func RegisterEpochServer(s grpc.ServiceRegistrar, srv EpochServer) {
+	// If the following call panics, it indicates UnimplementedEpochServer was
+	// embedded by pointer and is nil.  This will cause panics if an
+	// unimplemented method is ever invoked, so we test this at initialization
+	// time to prevent it from happening at runtime later due to I/O.
+	if t, ok := srv.(interface{ testEmbeddedByValue() }); ok {
+		t.testEmbeddedByValue()
+	}
+	s.RegisterService(&Epoch_ServiceDesc, srv)
+}
+
+func _Epoch_Prepare_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(PrepareRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(EpochServer).Prepare(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: Epoch_Prepare_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(EpochServer).Prepare(ctx, req.(*PrepareRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _Epoch_Commit_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(EpochRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(EpochServer).Commit(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: Epoch_Commit_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(EpochServer).Commit(ctx, req.(*EpochRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _Epoch_Abort_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(EpochRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(EpochServer).Abort(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: Epoch_Abort_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(EpochServer).Abort(ctx, req.(*EpochRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+// Epoch_ServiceDesc is the grpc.ServiceDesc for Epoch service.
+// It's only intended for direct use with grpc.RegisterService,
+// and not to be introspected or modified (even as a copy)
+var Epoch_ServiceDesc = grpc.ServiceDesc{
+	ServiceName: "safevault.Epoch",
+	HandlerType: (*EpochServer)(nil),
+	Methods: []grpc.MethodDesc{
+		{
+			MethodName: "Prepare",
+			Handler:    _Epoch_Prepare_Handler,
+		},
+		{
+			MethodName: "Commit",
+			Handler:    _Epoch_Commit_Handler,
+		},
+		{
+			MethodName: "Abort",
+			Handler:    _Epoch_Abort_Handler,
 		},
 	},
 	Streams:  []grpc.StreamDesc{},

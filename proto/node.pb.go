@@ -677,6 +677,199 @@ func (*DeliverSubSharesResponse) Descriptor() ([]byte, []int) {
 	return file_node_proto_rawDescGZIP(), []int{11}
 }
 
+// Nœud participant à un renouvellement.
+type Participant struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	X             uint32                 `protobuf:"varint,1,opt,name=x,proto3" json:"x,omitempty"`
+	Address       string                 `protobuf:"bytes,2,opt,name=address,proto3" json:"address,omitempty"` // "hôte:port"
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *Participant) Reset() {
+	*x = Participant{}
+	mi := &file_node_proto_msgTypes[12]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *Participant) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*Participant) ProtoMessage() {}
+
+func (x *Participant) ProtoReflect() protoreflect.Message {
+	mi := &file_node_proto_msgTypes[12]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use Participant.ProtoReflect.Descriptor instead.
+func (*Participant) Descriptor() ([]byte, []int) {
+	return file_node_proto_rawDescGZIP(), []int{12}
+}
+
+func (x *Participant) GetX() uint32 {
+	if x != nil {
+		return x.X
+	}
+	return 0
+}
+
+func (x *Participant) GetAddress() string {
+	if x != nil {
+		return x.Address
+	}
+	return ""
+}
+
+type PrepareRequest struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Epoch         uint64                 `protobuf:"varint,1,opt,name=epoch,proto3" json:"epoch,omitempty"`              // époque cible
+	T             uint32                 `protobuf:"varint,2,opt,name=t,proto3" json:"t,omitempty"`                      // seuil
+	Participants  []*Participant         `protobuf:"bytes,3,rep,name=participants,proto3" json:"participants,omitempty"` // ensemble fixé par le coordinateur, le même pour tous
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *PrepareRequest) Reset() {
+	*x = PrepareRequest{}
+	mi := &file_node_proto_msgTypes[13]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *PrepareRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*PrepareRequest) ProtoMessage() {}
+
+func (x *PrepareRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_node_proto_msgTypes[13]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use PrepareRequest.ProtoReflect.Descriptor instead.
+func (*PrepareRequest) Descriptor() ([]byte, []int) {
+	return file_node_proto_rawDescGZIP(), []int{13}
+}
+
+func (x *PrepareRequest) GetEpoch() uint64 {
+	if x != nil {
+		return x.Epoch
+	}
+	return 0
+}
+
+func (x *PrepareRequest) GetT() uint32 {
+	if x != nil {
+		return x.T
+	}
+	return 0
+}
+
+func (x *PrepareRequest) GetParticipants() []*Participant {
+	if x != nil {
+		return x.Participants
+	}
+	return nil
+}
+
+type EpochRequest struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Epoch         uint64                 `protobuf:"varint,1,opt,name=epoch,proto3" json:"epoch,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *EpochRequest) Reset() {
+	*x = EpochRequest{}
+	mi := &file_node_proto_msgTypes[14]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *EpochRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*EpochRequest) ProtoMessage() {}
+
+func (x *EpochRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_node_proto_msgTypes[14]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use EpochRequest.ProtoReflect.Descriptor instead.
+func (*EpochRequest) Descriptor() ([]byte, []int) {
+	return file_node_proto_rawDescGZIP(), []int{14}
+}
+
+func (x *EpochRequest) GetEpoch() uint64 {
+	if x != nil {
+		return x.Epoch
+	}
+	return 0
+}
+
+type EpochResponse struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *EpochResponse) Reset() {
+	*x = EpochResponse{}
+	mi := &file_node_proto_msgTypes[15]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *EpochResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*EpochResponse) ProtoMessage() {}
+
+func (x *EpochResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_node_proto_msgTypes[15]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use EpochResponse.ProtoReflect.Descriptor instead.
+func (*EpochResponse) Descriptor() ([]byte, []int) {
+	return file_node_proto_rawDescGZIP(), []int{15}
+}
+
 var File_node_proto protoreflect.FileDescriptor
 
 const file_node_proto_rawDesc = "" +
@@ -723,14 +916,28 @@ const file_node_proto_rawDesc = "" +
 	"\ftarget_epoch\x18\x03 \x01(\x04R\vtargetEpoch\x122\n" +
 	"\n" +
 	"sub_shares\x18\x04 \x03(\v2\x13.safevault.SubShareR\tsubShares\"\x1a\n" +
-	"\x18DeliverSubSharesResponse2\x8d\x02\n" +
+	"\x18DeliverSubSharesResponse\"5\n" +
+	"\vParticipant\x12\f\n" +
+	"\x01x\x18\x01 \x01(\rR\x01x\x12\x18\n" +
+	"\aaddress\x18\x02 \x01(\tR\aaddress\"p\n" +
+	"\x0ePrepareRequest\x12\x14\n" +
+	"\x05epoch\x18\x01 \x01(\x04R\x05epoch\x12\f\n" +
+	"\x01t\x18\x02 \x01(\rR\x01t\x12:\n" +
+	"\fparticipants\x18\x03 \x03(\v2\x16.safevault.ParticipantR\fparticipants\"$\n" +
+	"\fEpochRequest\x12\x14\n" +
+	"\x05epoch\x18\x01 \x01(\x04R\x05epoch\"\x0f\n" +
+	"\rEpochResponse2\x8d\x02\n" +
 	"\x04Node\x12C\n" +
 	"\bPutShare\x12\x1a.safevault.PutShareRequest\x1a\x1b.safevault.PutShareResponse\x12C\n" +
 	"\bGetShare\x12\x1a.safevault.GetShareRequest\x1a\x1b.safevault.GetShareResponse\x12=\n" +
 	"\tPutBlocks\x12\x10.safevault.Block\x1a\x1c.safevault.PutBlocksResponse(\x01\x12<\n" +
 	"\tGetBlocks\x12\x1b.safevault.GetBlocksRequest\x1a\x10.safevault.Block0\x012f\n" +
 	"\aRenewal\x12[\n" +
-	"\x10DeliverSubShares\x12\".safevault.DeliverSubSharesRequest\x1a#.safevault.DeliverSubSharesResponseB\x14Z\x12safevault/proto;pbb\x06proto3"
+	"\x10DeliverSubShares\x12\".safevault.DeliverSubSharesRequest\x1a#.safevault.DeliverSubSharesResponse2\xc0\x01\n" +
+	"\x05Epoch\x12>\n" +
+	"\aPrepare\x12\x19.safevault.PrepareRequest\x1a\x18.safevault.EpochResponse\x12;\n" +
+	"\x06Commit\x12\x17.safevault.EpochRequest\x1a\x18.safevault.EpochResponse\x12:\n" +
+	"\x05Abort\x12\x17.safevault.EpochRequest\x1a\x18.safevault.EpochResponseB\x14Z\x12safevault/proto;pbb\x06proto3"
 
 var (
 	file_node_proto_rawDescOnce sync.Once
@@ -744,7 +951,7 @@ func file_node_proto_rawDescGZIP() []byte {
 	return file_node_proto_rawDescData
 }
 
-var file_node_proto_msgTypes = make([]protoimpl.MessageInfo, 12)
+var file_node_proto_msgTypes = make([]protoimpl.MessageInfo, 16)
 var file_node_proto_goTypes = []any{
 	(*Proof)(nil),                    // 0: safevault.Proof
 	(*Share)(nil),                    // 1: safevault.Share
@@ -758,6 +965,10 @@ var file_node_proto_goTypes = []any{
 	(*SubShare)(nil),                 // 9: safevault.SubShare
 	(*DeliverSubSharesRequest)(nil),  // 10: safevault.DeliverSubSharesRequest
 	(*DeliverSubSharesResponse)(nil), // 11: safevault.DeliverSubSharesResponse
+	(*Participant)(nil),              // 12: safevault.Participant
+	(*PrepareRequest)(nil),           // 13: safevault.PrepareRequest
+	(*EpochRequest)(nil),             // 14: safevault.EpochRequest
+	(*EpochResponse)(nil),            // 15: safevault.EpochResponse
 }
 var file_node_proto_depIdxs = []int32{
 	0,  // 0: safevault.Block.proof:type_name -> safevault.Proof
@@ -767,21 +978,28 @@ var file_node_proto_depIdxs = []int32{
 	1,  // 4: safevault.GetShareResponse.share:type_name -> safevault.Share
 	0,  // 5: safevault.GetBlocksRequest.proof:type_name -> safevault.Proof
 	9,  // 6: safevault.DeliverSubSharesRequest.sub_shares:type_name -> safevault.SubShare
-	3,  // 7: safevault.Node.PutShare:input_type -> safevault.PutShareRequest
-	5,  // 8: safevault.Node.GetShare:input_type -> safevault.GetShareRequest
-	2,  // 9: safevault.Node.PutBlocks:input_type -> safevault.Block
-	8,  // 10: safevault.Node.GetBlocks:input_type -> safevault.GetBlocksRequest
-	10, // 11: safevault.Renewal.DeliverSubShares:input_type -> safevault.DeliverSubSharesRequest
-	4,  // 12: safevault.Node.PutShare:output_type -> safevault.PutShareResponse
-	6,  // 13: safevault.Node.GetShare:output_type -> safevault.GetShareResponse
-	7,  // 14: safevault.Node.PutBlocks:output_type -> safevault.PutBlocksResponse
-	2,  // 15: safevault.Node.GetBlocks:output_type -> safevault.Block
-	11, // 16: safevault.Renewal.DeliverSubShares:output_type -> safevault.DeliverSubSharesResponse
-	12, // [12:17] is the sub-list for method output_type
-	7,  // [7:12] is the sub-list for method input_type
-	7,  // [7:7] is the sub-list for extension type_name
-	7,  // [7:7] is the sub-list for extension extendee
-	0,  // [0:7] is the sub-list for field type_name
+	12, // 7: safevault.PrepareRequest.participants:type_name -> safevault.Participant
+	3,  // 8: safevault.Node.PutShare:input_type -> safevault.PutShareRequest
+	5,  // 9: safevault.Node.GetShare:input_type -> safevault.GetShareRequest
+	2,  // 10: safevault.Node.PutBlocks:input_type -> safevault.Block
+	8,  // 11: safevault.Node.GetBlocks:input_type -> safevault.GetBlocksRequest
+	10, // 12: safevault.Renewal.DeliverSubShares:input_type -> safevault.DeliverSubSharesRequest
+	13, // 13: safevault.Epoch.Prepare:input_type -> safevault.PrepareRequest
+	14, // 14: safevault.Epoch.Commit:input_type -> safevault.EpochRequest
+	14, // 15: safevault.Epoch.Abort:input_type -> safevault.EpochRequest
+	4,  // 16: safevault.Node.PutShare:output_type -> safevault.PutShareResponse
+	6,  // 17: safevault.Node.GetShare:output_type -> safevault.GetShareResponse
+	7,  // 18: safevault.Node.PutBlocks:output_type -> safevault.PutBlocksResponse
+	2,  // 19: safevault.Node.GetBlocks:output_type -> safevault.Block
+	11, // 20: safevault.Renewal.DeliverSubShares:output_type -> safevault.DeliverSubSharesResponse
+	15, // 21: safevault.Epoch.Prepare:output_type -> safevault.EpochResponse
+	15, // 22: safevault.Epoch.Commit:output_type -> safevault.EpochResponse
+	15, // 23: safevault.Epoch.Abort:output_type -> safevault.EpochResponse
+	16, // [16:24] is the sub-list for method output_type
+	8,  // [8:16] is the sub-list for method input_type
+	8,  // [8:8] is the sub-list for extension type_name
+	8,  // [8:8] is the sub-list for extension extendee
+	0,  // [0:8] is the sub-list for field type_name
 }
 
 func init() { file_node_proto_init() }
@@ -795,9 +1013,9 @@ func file_node_proto_init() {
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_node_proto_rawDesc), len(file_node_proto_rawDesc)),
 			NumEnums:      0,
-			NumMessages:   12,
+			NumMessages:   16,
 			NumExtensions: 0,
-			NumServices:   2,
+			NumServices:   3,
 		},
 		GoTypes:           file_node_proto_goTypes,
 		DependencyIndexes: file_node_proto_depIdxs,

@@ -85,5 +85,37 @@ message DeliverSubSharesResponse {}
 
 service Renewal {
   // Reçoit les sous-parts d'un autre nœud pour l'époque cible.
+  // Réservé aux nœuds : l'appelant présente le certificat "node-<from_x>".
   rpc DeliverSubShares(DeliverSubSharesRequest) returns (DeliverSubSharesResponse);
+}
+
+// Nœud participant à un renouvellement.
+message Participant {
+  uint32 x = 1;
+  string address = 2; // "hôte:port"
+}
+
+message PrepareRequest {
+  uint64 epoch = 1;                       // époque cible
+  uint32 t = 2;                           // seuil
+  repeated Participant participants = 3;  // ensemble fixé par le coordinateur, le même pour tous
+}
+
+message EpochRequest {
+  uint64 epoch = 1;
+}
+
+message EpochResponse {}
+
+// Renouvellement en deux phases, piloté par le coordinateur.
+// Réservé au coordinateur : l'appelant présente le certificat "coordinator".
+// Aucune part ni sous-part ne passe par ces messages.
+service Epoch {
+  // Phase 1 : échange les sous-parts avec les autres participants, puis calcule et garde
+  // EN ATTENTE les parts de l'époque. Les parts en service restent inchangées.
+  rpc Prepare(PrepareRequest) returns (EpochResponse);
+  // Phase 2 : les parts en attente deviennent les parts en service, les anciennes sont effacées.
+  rpc Commit(EpochRequest) returns (EpochResponse);
+  // Abandon : les parts en attente et les sous-parts de l'époque sont effacées.
+  rpc Abort(EpochRequest) returns (EpochResponse);
 }
