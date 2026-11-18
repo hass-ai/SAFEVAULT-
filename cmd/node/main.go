@@ -8,10 +8,14 @@
 //	DATA_DIR        dossier des données du nœud (défaut /data)
 //	TLS_CERT_PATH   certificat TLS du nœud, signé par la CA (défaut certs/node.crt)
 //	TLS_KEY_PATH    clé privée TLS du nœud (défaut certs/node.key)
+//	CA_PATH         certificat de la CA interne (défaut certs/ca.crt), qui sert à
+//	                authentifier le coordinateur et les autres nœuds (mTLS)
 package main
 
 import (
 	"crypto/tls"
+	"crypto/x509"
+	"errors"
 	"fmt"
 	"log"
 	"net"
@@ -22,6 +26,8 @@ import (
 
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials"
+	"google.golang.org/grpc/health"
+	healthpb "google.golang.org/grpc/health/grpc_health_v1"
 
 	"safevault/internal/storage"
 	pb "safevault/proto"
@@ -36,6 +42,7 @@ type Config struct {
 	DataDir     string
 	TLSCertPath string
 	TLSKeyPath  string
+	CAPath      string
 }
 
 func loadConfig() (Config, error) {
@@ -49,6 +56,7 @@ func loadConfig() (Config, error) {
 		DataDir:     getEnv("DATA_DIR", "/data"),
 		TLSCertPath: getEnv("TLS_CERT_PATH", "certs/node.crt"),
 		TLSKeyPath:  getEnv("TLS_KEY_PATH", "certs/node.key"),
+		CAPath:      getEnv("CA_PATH", "certs/ca.crt"),
 	}, nil
 }
 
@@ -60,10 +68,28 @@ func getEnv(name, defaultValue string) string {
 	return defaultValue
 }
 
-// newGRPCServer crée le serveur gRPC du nœud, en TLS 1.3, avec ses deux services.
-func newGRPCServer(cert tls.Certificate, node *nodeServer) *grpc.Server {
+// loadCA lit le certificat de la CA interne.
+func loadCA(path string) (*x509.CertPool, error) {
+	caPEM, err := os.ReadFile(path)
+	if err != nil {
+		return nil, fmt.Errorf("certificat de la CA : %w", err)
+	}
+	pool := x509.NewCertPool()
+	if !pool.AppendCertsFromPEM(caPEM) {
+		return nil, errors.New("certificat de la CA invalide")
+	}
+	return pool, nil
+}
+
+// newGRPCServer crée le serveur gRPC du nœud, en TLS 1.3, avec ses services et le health
+// check standard de gRPC. Le certificat client est facultatif (les utilisateurs n'en ont
+// pas), mais s'il est présenté il doit être signé par la CA : les services Epoch et
+// Renewal exigent ensuite le certificat du coordinateur ou d'un nœud (voir peer.go).
+func newGRPCServer(cert tls.Certificate, ca *x509.CertPool, node *nodeServer) *grpc.Server {
 	creds := credentials.NewTLS(&tls.Config{
 		Certificates: []tls.Certificate{cert},
+		ClientCAs:    ca,
+		ClientAuth:   tls.VerifyClientCertIfGiven,
 		MinVersion:   tls.VersionTLS13,
 	})
 	server := grpc.NewServer(
@@ -73,6 +99,8 @@ func newGRPCServer(cert tls.Certificate, node *nodeServer) *grpc.Server {
 	)
 	pb.RegisterNodeServer(server, node)
 	pb.RegisterRenewalServer(server, node)
+	pb.RegisterEpochServer(server, node)
+	healthpb.RegisterHealthServer(server, health.NewServer()) // SERVING par défaut
 	return server
 }
 
@@ -93,11 +121,16 @@ func main() {
 		log.Fatalf("certificat TLS : %v", err)
 	}
 
+	ca, err := loadCA(cfg.CAPath)
+	if err != nil {
+		log.Fatal(err)
+	}
+
 	listener, err := net.Listen("tcp", cfg.ListenAddr)
 	if err != nil {
 		log.Fatal(err)
 	}
-	server := newGRPCServer(cert, newNodeServer(cfg.X, store))
+	server := newGRPCServer(cert, ca, newNodeServer(cfg.X, store, peerTLSConfig(cert, ca)))
 
 	stop := make(chan os.Signal, 1)
 	signal.Notify(stop, syscall.SIGINT, syscall.SIGTERM)

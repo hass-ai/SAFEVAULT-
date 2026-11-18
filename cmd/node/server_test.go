@@ -15,6 +15,7 @@ import (
 	"math/big"
 	"net"
 	"runtime"
+	"runtime/debug"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -33,18 +34,79 @@ const testX = 3
 
 // testNode est un nœud lancé en TLS sur un port local, avec ses clients gRPC.
 type testNode struct {
-	addr    string
-	node    pb.NodeClient
-	renewal pb.RenewalClient
-	store   *storage.Store
+	x     uint32
+	addr  string
+	pki   *testPKI
+	node  pb.NodeClient // client utilisateur, sans certificat
+	store *storage.Store
 }
 
-// startNode lance un nœud d'abscisse testX avec un certificat signé par une CA de test.
+// testPKI est une CA de test qui signe les certificats des composants.
+type testPKI struct {
+	ca     *x509.Certificate
+	caKey  *ecdsa.PrivateKey
+	pool   *x509.CertPool
+	serial int64
+}
+
+func newPKI(t *testing.T) *testPKI {
+	t.Helper()
+	ca, key := newCA(t)
+	pool := x509.NewCertPool()
+	pool.AddCert(ca)
+	return &testPKI{ca: ca, caKey: key, pool: pool, serial: 1}
+}
+
+// issue signe un certificat au nom name (champ CN), valable pour 127.0.0.1, utilisable
+// comme certificat serveur et client, comme ceux de scripts/gen_certs.sh.
+func (p *testPKI) issue(t *testing.T, name string) tls.Certificate {
+	t.Helper()
+	p.serial++
+	key, _ := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
+	template := &x509.Certificate{
+		SerialNumber: big.NewInt(p.serial),
+		Subject:      pkix.Name{CommonName: name},
+		NotBefore:    time.Now().Add(-time.Hour),
+		NotAfter:     time.Now().Add(time.Hour),
+		KeyUsage:     x509.KeyUsageDigitalSignature,
+		ExtKeyUsage:  []x509.ExtKeyUsage{x509.ExtKeyUsageServerAuth, x509.ExtKeyUsageClientAuth},
+		IPAddresses:  []net.IP{net.ParseIP("127.0.0.1")},
+	}
+	der, err := x509.CreateCertificate(rand.Reader, template, p.ca, &key.PublicKey, p.caKey)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return tls.Certificate{Certificate: [][]byte{der}, PrivateKey: key}
+}
+
+// dial ouvre une connexion TLS vers addr. Avec un certificat non nil, la connexion est
+// authentifiée des deux côtés (mTLS).
+func (p *testPKI) dial(t *testing.T, addr string, cert *tls.Certificate) *grpc.ClientConn {
+	t.Helper()
+	config := &tls.Config{RootCAs: p.pool, MinVersion: tls.VersionTLS13}
+	if cert != nil {
+		config.Certificates = []tls.Certificate{*cert}
+	}
+	conn, err := grpc.NewClient(addr,
+		grpc.WithTransportCredentials(credentials.NewTLS(config)),
+		grpc.WithDefaultCallOptions(grpc.MaxCallRecvMsgSize(maxMessageSize), grpc.MaxCallSendMsgSize(maxMessageSize)))
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { conn.Close() })
+	return conn
+}
+
+// startNode lance un nœud d'abscisse testX avec sa propre CA de test.
 func startNode(t *testing.T) *testNode {
 	t.Helper()
+	return startNodeWith(t, newPKI(t), testX)
+}
 
-	caCert, caKey := newCA(t)
-	serverCert := newServerCert(t, caCert, caKey)
+// startNodeWith lance le nœud x avec un certificat "node-x" signé par la CA pki.
+func startNodeWith(t *testing.T, pki *testPKI, x uint32) *testNode {
+	t.Helper()
+	cert := pki.issue(t, nodeName(x))
 
 	store, err := storage.Open(t.TempDir())
 	if err != nil {
@@ -56,23 +118,26 @@ func startNode(t *testing.T) *testNode {
 	if err != nil {
 		t.Fatal(err)
 	}
-	server := newGRPCServer(serverCert, newNodeServer(testX, store))
+	server := newGRPCServer(cert, pki.pool, newNodeServer(x, store, peerTLSConfig(cert, pki.pool)))
 	go server.Serve(listener)
 	t.Cleanup(server.Stop)
 
-	// Le client vérifie le certificat du nœud avec la CA, comme le client SafeVault.
-	pool := x509.NewCertPool()
-	pool.AddCert(caCert)
-	creds := credentials.NewTLS(&tls.Config{RootCAs: pool, MinVersion: tls.VersionTLS13})
-	conn, err := grpc.NewClient(listener.Addr().String(),
-		grpc.WithTransportCredentials(creds),
-		grpc.WithDefaultCallOptions(grpc.MaxCallRecvMsgSize(maxMessageSize), grpc.MaxCallSendMsgSize(maxMessageSize)))
-	if err != nil {
-		t.Fatal(err)
-	}
-	t.Cleanup(func() { conn.Close() })
+	addr := listener.Addr().String()
+	return &testNode{x: x, addr: addr, pki: pki, node: pb.NewNodeClient(pki.dial(t, addr, nil)), store: store}
+}
 
-	return &testNode{addr: listener.Addr().String(), node: pb.NewNodeClient(conn), renewal: pb.NewRenewalClient(conn), store: store}
+// renewalAs renvoie un client Renewal qui se présente avec le certificat name.
+func (n *testNode) renewalAs(t *testing.T, name string) pb.RenewalClient {
+	t.Helper()
+	cert := n.pki.issue(t, name)
+	return pb.NewRenewalClient(n.pki.dial(t, n.addr, &cert))
+}
+
+// epochAs renvoie un client Epoch qui se présente avec le certificat name.
+func (n *testNode) epochAs(t *testing.T, name string) pb.EpochClient {
+	t.Helper()
+	cert := n.pki.issue(t, name)
+	return pb.NewEpochClient(n.pki.dial(t, n.addr, &cert))
 }
 
 func newCA(t *testing.T) (*x509.Certificate, *ecdsa.PrivateKey) {
@@ -93,25 +158,6 @@ func newCA(t *testing.T) (*x509.Certificate, *ecdsa.PrivateKey) {
 	}
 	cert, _ := x509.ParseCertificate(der)
 	return cert, key
-}
-
-func newServerCert(t *testing.T, ca *x509.Certificate, caKey *ecdsa.PrivateKey) tls.Certificate {
-	t.Helper()
-	key, _ := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
-	template := &x509.Certificate{
-		SerialNumber: big.NewInt(2),
-		Subject:      pkix.Name{CommonName: "node-3"},
-		NotBefore:    time.Now().Add(-time.Hour),
-		NotAfter:     time.Now().Add(time.Hour),
-		KeyUsage:     x509.KeyUsageDigitalSignature,
-		ExtKeyUsage:  []x509.ExtKeyUsage{x509.ExtKeyUsageServerAuth},
-		IPAddresses:  []net.IP{net.ParseIP("127.0.0.1")},
-	}
-	der, err := x509.CreateCertificate(rand.Reader, template, ca, &key.PublicKey, caKey)
-	if err != nil {
-		t.Fatal(err)
-	}
-	return tls.Certificate{Certificate: [][]byte{der}, PrivateKey: key}
 }
 
 func newUserKey(t *testing.T) ed25519.PrivateKey {
@@ -402,6 +448,9 @@ func TestLargeFileStreaming(t *testing.T) {
 		return data
 	}
 
+	// Un ramasse-miettes plus fréquent pendant la mesure : sans lui, le pic compte surtout
+	// des blocs déjà libérés mais pas encore récupérés, et dépend de la vitesse de la machine.
+	defer debug.SetGCPercent(debug.SetGCPercent(10))
 	runtime.GC()
 	var peak atomic.Uint64
 	done := make(chan struct{})
@@ -465,8 +514,9 @@ func TestLargeFileStreaming(t *testing.T) {
 
 func TestDeliverSubShares(t *testing.T) {
 	n := startNode(t)
+	ctx := context.Background()
 
-	_, err := n.renewal.DeliverSubShares(context.Background(), &pb.DeliverSubSharesRequest{
+	_, err := n.renewalAs(t, "node-1").DeliverSubShares(ctx, &pb.DeliverSubSharesRequest{
 		FromX: 1, ToX: testX, TargetEpoch: 5,
 		SubShares: []*pb.SubShare{{FileId: "f1", Value: []byte("d1")}, {FileId: "f2", Value: []byte("d2")}},
 	})
@@ -480,15 +530,47 @@ func TestDeliverSubShares(t *testing.T) {
 
 	cases := map[string]*pb.DeliverSubSharesRequest{
 		"autre destinataire": {FromX: 1, ToX: testX + 1, TargetEpoch: 5},
-		"émetteur = soi":     {FromX: testX, ToX: testX, TargetEpoch: 5},
 		"époque nulle":       {FromX: 1, ToX: testX},
 		"sous-part vide":     {FromX: 1, ToX: testX, TargetEpoch: 5, SubShares: []*pb.SubShare{{FileId: "f1"}}},
 	}
 	for name, req := range cases {
 		t.Run(name, func(t *testing.T) {
-			_, err := n.renewal.DeliverSubShares(context.Background(), req)
+			_, err := n.renewalAs(t, "node-1").DeliverSubShares(ctx, req)
 			wantCode(t, err, codes.InvalidArgument)
 		})
+	}
+	t.Run("émetteur = soi", func(t *testing.T) {
+		_, err := n.renewalAs(t, nodeName(testX)).DeliverSubShares(ctx, &pb.DeliverSubSharesRequest{FromX: testX, ToX: testX, TargetEpoch: 5})
+		wantCode(t, err, codes.InvalidArgument)
+	})
+}
+
+// TestDeliverSubSharesRequiresNodeCertificate vérifie que seules les sous-parts envoyées par
+// le nœud annoncé sont acceptées.
+func TestDeliverSubSharesRequiresNodeCertificate(t *testing.T) {
+	n := startNode(t)
+	req := &pb.DeliverSubSharesRequest{FromX: 1, ToX: testX, TargetEpoch: 5,
+		SubShares: []*pb.SubShare{{FileId: "f1", Value: []byte("d")}}}
+
+	_, err := pb.NewRenewalClient(n.pki.dial(t, n.addr, nil)).DeliverSubShares(context.Background(), req)
+	wantCode(t, err, codes.Unauthenticated)
+
+	_, err = n.renewalAs(t, "node-2").DeliverSubShares(context.Background(), req)
+	wantCode(t, err, codes.PermissionDenied)
+
+	// Un certificat au bon nom mais signé par une autre CA est refusé dès la poignée de main.
+	other := newPKI(t)
+	cert := other.issue(t, "node-1")
+	config := &tls.Config{RootCAs: n.pki.pool, Certificates: []tls.Certificate{cert}, MinVersion: tls.VersionTLS13}
+	conn, _ := grpc.NewClient(n.addr, grpc.WithTransportCredentials(credentials.NewTLS(config)))
+	defer conn.Close()
+	_, err = pb.NewRenewalClient(conn).DeliverSubShares(context.Background(), req)
+	if err == nil {
+		t.Fatal("certificat d'une autre CA accepté")
+	}
+
+	if subs, _ := n.store.SubShares(5); len(subs) != 0 {
+		t.Fatalf("%d sous-parts enregistrées malgré les refus", len(subs))
 	}
 }
 
