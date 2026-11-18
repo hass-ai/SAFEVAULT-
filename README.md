@@ -69,3 +69,21 @@ Pour régénérer le code Go après une modification d'un `.proto` : `make proto
 (nécessite `protoc`, `protoc-gen-go` et `protoc-gen-go-grpc`).
 
 Tests : `go test ./...` (ajouter `-short` pour sauter le transfert de 100 Mo).
+
+## Démo
+
+Une page web montre le système en direct : les 5 nœuds, l'empreinte de leur part (qui change à chaque renouvellement), et l'attaquant mobile.
+
+```sh
+go run ./cmd/demo        # depuis la racine du dépôt, puis ouvrir http://localhost:8080
+```
+
+La démo compile et lance les vrais programmes (`cmd/coordinator`, 5 × `cmd/node`, `cmd/client`) dans un dossier temporaire, avec une CA générée pour l'occasion. Boutons disponibles :
+
+- **Déposer un fichier** / **Récupérer le fichier** : le client chiffre, découpe la clé, dépose, puis reconstruit et vérifie que le fichier est identique ;
+- **Arrêter** / **Redémarrer** un nœud : la récupération marche avec 2 nœuds en panne, pas avec 3 ;
+- **Renouveler les parts** : nouvelle époque, toutes les empreintes changent, la clé reste la même ;
+- **Attaque sans renouvellement** : l'attaquant lit le disque de 2 nœuds, puis de 2 autres ; il réunit 3 parts compatibles et lit le fichier ;
+- **Attaque avec renouvellement** : même attaque avec un renouvellement entre les deux ; aucune combinaison de ses 4 parts ne déchiffre le fichier (G2).
+
+Variable d'environnement : `DEMO_ADDR` (défaut `localhost:8080`).
