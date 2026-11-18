@@ -25,3 +25,5 @@ jobs:
       - uses: actions/checkout@v4
       - name: Image du nœud
         run: docker build --build-arg CMD=node -t safevault-node .
+      - name: Image du coordinateur
+        run: docker build --build-arg CMD=coordinator -t safevault-coordinator .
