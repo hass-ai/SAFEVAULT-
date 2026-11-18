@@ -9,8 +9,10 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"path/filepath"
 	"time"
 
+	"filippo.io/edwards25519"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 
@@ -43,7 +45,7 @@ func runDownload(cfg Config, fileID, output string) error {
 	}
 
 	var file *pb.GetFileResponse
-	var secret []byte
+	var secret *edwards25519.Scalar
 	for attempt := 1; ; attempt++ {
 		file, err = coordinator.GetFile(authCtx, &pb.GetFileRequest{FileId: fileID})
 		if err != nil {
@@ -58,39 +60,61 @@ func runDownload(cfg Config, fileID, output string) error {
 		}
 		time.Sleep(time.Second)
 	}
-	defer clear(secret)
+	defer secret.Set(edwards25519.NewScalar()) // remise à zéro du secret
 
-	key, err := crypto.DeriveFileKey(secret, fileID)
+	secretBytes := secret.Bytes()
+	defer clear(secretBytes)
+
+	key, err := crypto.DeriveFileKey(secretBytes, []byte(fileID))
 	if err != nil {
 		return err
 	}
 	defer clear(key)
+
+	fileCipher, err := crypto.NewFileCipher(key, []byte(fileID))
+	if err != nil {
+		return err
+	}
 
 	blocks, err := fetchBlocks(ctx, cfg, privateKey, fileID, file)
 	if err != nil {
 		return err
 	}
 
-	data, err := crypto.DecryptBlocks(key, file.Manifest.NoncePrefix, blocks)
-	if err != nil {
-		return fmt.Errorf("déchiffrement impossible (part ou bloc incorrect) : %w", err)
-	}
-	if err := os.WriteFile(output, data, 0o600); err != nil {
+	if err := writeDecrypted(fileCipher, blocks, output); err != nil {
 		return err
 	}
-
 	fmt.Println("Fichier récupéré :", output)
 	return nil
 }
 
+// writeDecrypted déchiffre les blocs dans un fichier temporaire, puis le renomme en output :
+// en cas d'erreur, aucun fichier à moitié déchiffré n'est laissé.
+func writeDecrypted(fileCipher *crypto.FileCipher, blocks [][]byte, output string) error {
+	tmp, err := os.CreateTemp(filepath.Dir(output), ".safevault-*")
+	if err != nil {
+		return err
+	}
+	defer os.Remove(tmp.Name()) // sans effet si le renommage a réussi
+
+	if err := fileCipher.DecryptBlocks(blocks, tmp); err != nil {
+		tmp.Close()
+		return fmt.Errorf("déchiffrement impossible (part ou bloc incorrect) : %w", err)
+	}
+	if err := tmp.Close(); err != nil {
+		return err
+	}
+	return os.Rename(tmp.Name(), output)
+}
+
 // collectSecret demande leur part aux nœuds jusqu'à en avoir t de la même époque, puis reconstruit le secret.
 func collectSecret(ctx context.Context, cfg Config, key ed25519.PrivateKey, fileID string,
-	file *pb.GetFileResponse) ([]byte, error) {
+	file *pb.GetFileResponse) (*edwards25519.Scalar, error) {
 
 	var shares []shamir.Share
 	defer func() {
 		for _, s := range shares {
-			clear(s.Value)
+			s.Value.Set(edwards25519.NewScalar()) // remise à zéro des parts
 		}
 	}()
 
@@ -113,13 +137,18 @@ func collectSecret(ctx context.Context, cfg Config, key ed25519.PrivateKey, file
 			fmt.Printf("nœud %s ignoré : part pour x = %d au lieu de %d\n", info.Address, share.X, info.X)
 			continue
 		}
-		shares = append(shares, shamir.Share{X: share.X, Value: share.Value})
+		value, err := edwards25519.NewScalar().SetCanonicalBytes(share.Value)
+		if err != nil {
+			fmt.Printf("nœud %s ignoré : part mal formée\n", info.Address)
+			continue
+		}
+		shares = append(shares, shamir.Share{Index: share.X, Epoch: share.Epoch, Value: value})
 	}
 
 	if len(shares) < int(file.T) {
 		return nil, fmt.Errorf("seulement %d parts sur les %d nécessaires", len(shares), file.T)
 	}
-	return shamir.Combine(shares)
+	return shamir.Combine(shares, int(file.T))
 }
 
 // getShare demande à un nœud sa part de la clé pour l'époque donnée.

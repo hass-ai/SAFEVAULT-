@@ -1,13 +1,17 @@
 package main
 
 import (
+	"bytes"
 	"context"
 	"crypto/ed25519"
+	"crypto/rand"
 	"crypto/sha256"
 	"fmt"
 	"os"
 	"path/filepath"
 	"time"
+
+	"filippo.io/edwards25519"
 
 	"safevault/internal/crypto"
 	"safevault/internal/shamir"
@@ -46,35 +50,42 @@ func runUpload(cfg Config, path string) error {
 		return fmt.Errorf("CreateFile : %w", err)
 	}
 
-	secret, err := shamir.RandomSecret()
+	secret, err := shamir.NewSecret(rand.Reader)
 	if err != nil {
 		return err
 	}
-	defer clear(secret)
+	defer secret.Set(edwards25519.NewScalar()) // remise à zéro du secret
 
-	key, err := crypto.DeriveFileKey(secret, file.FileId)
+	secretBytes := secret.Bytes()
+	defer clear(secretBytes)
+
+	key, err := crypto.DeriveFileKey(secretBytes, []byte(file.FileId))
 	if err != nil {
 		return err
 	}
 	defer clear(key)
 
-	blocks, noncePrefix, err := crypto.EncryptBlocks(key, data)
+	fileCipher, err := crypto.NewFileCipher(key, []byte(file.FileId))
+	if err != nil {
+		return err
+	}
+	blocks, err := fileCipher.EncryptBlocks(bytes.NewReader(data), crypto.DefaultBlockSize)
 	if err != nil {
 		return err
 	}
 
-	shares, err := shamir.Split(secret, int(file.T), int(file.N))
+	shares, err := shamir.Split(secret, int(file.T), int(file.N), rand.Reader)
 	if err != nil {
 		return err
 	}
 	defer func() {
 		for _, s := range shares {
-			clear(s.Value)
+			s.Value.Set(edwards25519.NewScalar()) // remise à zéro des parts
 		}
 	}()
 	sharesByX := make(map[uint32]shamir.Share)
 	for _, s := range shares {
-		sharesByX[s.X] = s
+		sharesByX[s.Index] = s
 	}
 
 	for _, node := range file.Nodes {
@@ -97,7 +108,6 @@ func runUpload(cfg Config, path string) error {
 		Manifest: &pb.Manifest{
 			BlockCount:  uint32(len(blocks)),
 			BlockHashes: hashes,
-			NoncePrefix: noncePrefix,
 			Size:        uint64(len(data)),
 		},
 	})
@@ -121,7 +131,7 @@ func sendToNode(ctx context.Context, cfg Config, key ed25519.PrivateKey, fileID 
 
 	_, err = node.PutShare(ctx, &pb.PutShareRequest{
 		FileId: fileID,
-		Share:  &pb.Share{X: share.X, Value: share.Value, Epoch: epoch},
+		Share:  &pb.Share{X: share.Index, Value: share.Value.Bytes(), Epoch: epoch},
 		Proof:  proof(key, "safevault/putshare/v1", info.X, fileID, epoch),
 	})
 	if err != nil {
