@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"log"
+	"sync"
 	"time"
 
 	"safevault/internal/metadata"
@@ -12,12 +13,7 @@ import (
 
 // participant est un nœud vu par le gestionnaire d'époques. Le coordinateur ne fait que
 // signaler les étapes : il n'envoie ni ne reçoit aucune part ni sous-part (G3).
-//
-// Il n'existe pas encore de RPC coordinateur -> nœud pour ces trois appels
-// (voir docs/proposals/rpc-coordinateur-noeud.md) : le gestionnaire est prêt et testé,
-// il sera branché sur les nœuds quand le service existera côté nœud. Côté nœud, les
-// trois opérations correspondent à storage.PutPendingShare (après échange des
-// sous-parts), storage.CommitEpoch et storage.AbortEpoch, et doivent être idempotentes.
+// En production, c'est le service Epoch du nœud (voir participants.go).
 type participant interface {
 	X() uint32
 	// Prepare demande au nœud de calculer et garder EN ATTENTE ses parts de l'époque,
@@ -113,18 +109,23 @@ func (m *epochManager) abort(ctx context.Context, epoch uint64) error {
 	return m.store.AbortEpoch(epoch)
 }
 
-// all appelle step sur chaque nœud et renvoie la première erreur, avec le x du nœud.
+// all appelle step sur tous les nœuds EN PARALLÈLE et renvoie leurs erreurs, avec le x
+// de chaque nœud. Le parallélisme est nécessaire pour Prepare : chaque nœud attend les
+// sous-parts de tous les autres avant de répondre.
 func (m *epochManager) all(ctx context.Context, epoch uint64,
 	step func(participant, context.Context, uint64) error) error {
 
-	var errs []error
-	for _, p := range m.participants {
-		stepCtx, cancel := context.WithTimeout(ctx, m.stepTimeout)
-		err := step(p, stepCtx, epoch)
-		cancel()
-		if err != nil {
-			errs = append(errs, fmt.Errorf("nœud x=%d : %w", p.X(), err))
-		}
+	errs := make([]error, len(m.participants))
+	var wg sync.WaitGroup
+	for i, p := range m.participants {
+		wg.Go(func() {
+			stepCtx, cancel := context.WithTimeout(ctx, m.stepTimeout)
+			defer cancel()
+			if err := step(p, stepCtx, epoch); err != nil {
+				errs[i] = fmt.Errorf("nœud x=%d : %w", p.X(), err)
+			}
+		})
 	}
+	wg.Wait()
 	return errors.Join(errs...)
 }

@@ -47,6 +47,9 @@ type coordinator struct {
 	store    *metadata.Store
 	server   *coordinatorServer
 	registry *registry
+	epochs   *epochManager
+
+	renewalInterval time.Duration
 }
 
 // setup ouvre la base (et crée le schéma), enregistre les nœuds, charge les certificats
@@ -92,7 +95,10 @@ func setupWithStore(cfg Config, store *metadata.Store) (*coordinator, error) {
 	healthServer.SetServingStatus("", healthpb.HealthCheckResponse_SERVING)
 	healthServer.SetServingStatus(pb.Coordinator_ServiceDesc.ServiceName, healthpb.HealthCheckResponse_SERVING)
 
-	return &coordinator{grpc: server, health: healthServer, store: store, server: coord, registry: reg}, nil
+	epochs := newEpochManager(store, newNodeParticipants(cfg.Nodes, cfg.T, cert, pool))
+
+	return &coordinator{grpc: server, health: healthServer, store: store, server: coord, registry: reg,
+		epochs: epochs, renewalInterval: cfg.RenewalInterval}, nil
 }
 
 // loadCA lit le certificat de la CA interne, qui sert à vérifier les nœuds.
@@ -108,9 +114,11 @@ func loadCA(path string) (*x509.CertPool, error) {
 	return pool, nil
 }
 
-// runBackground lance les tâches de fond (heartbeats, purge) jusqu'à l'annulation de ctx.
+// runBackground lance les tâches de fond (heartbeats, purge, renouvellements) jusqu'à
+// l'annulation de ctx.
 func (c *coordinator) runBackground(ctx context.Context) {
 	go c.registry.run(ctx)
+	go c.runRenewals(ctx)
 	go func() {
 		ticker := time.NewTicker(purgeInterval)
 		defer ticker.Stop()
@@ -147,4 +155,35 @@ func newGRPCServer(cert tls.Certificate, coord *coordinatorServer, healthServer 
 	pb.RegisterCoordinatorServer(server, coord)
 	healthpb.RegisterHealthServer(server, healthServer)
 	return server
+}
+
+// runRenewals termine d'abord un renouvellement interrompu par un arrêt, puis renouvelle
+// les parts toutes les renewalInterval (jamais si renewalInterval vaut 0).
+func (c *coordinator) runRenewals(ctx context.Context) {
+	if err := c.epochs.recover(ctx); err != nil {
+		log.Printf("reprise du renouvellement : %v", err)
+	}
+	if c.renewalInterval <= 0 {
+		return
+	}
+	ticker := time.NewTicker(c.renewalInterval)
+	defer ticker.Stop()
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-ticker.C:
+			c.renew(ctx)
+		}
+	}
+}
+
+// renew lance un renouvellement des parts et journalise le résultat.
+func (c *coordinator) renew(ctx context.Context) {
+	epoch, err := c.epochs.refresh(ctx)
+	if err != nil {
+		log.Printf("renouvellement : %v", err)
+		return
+	}
+	log.Printf("renouvellement terminé : époque %d", epoch)
 }
