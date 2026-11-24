@@ -320,18 +320,185 @@ func (*PutShareResponse) Descriptor() ([]byte, []int) {
 	return file_node_proto_rawDescGZIP(), []int{4}
 }
 
+// Autorisation de lecture d'un fichier, signée par son propriétaire (Ed25519).
+// Les nœuds la vérifient avec la clé du propriétaire qu'ils ont enregistrée au dépôt :
+// le coordinateur la transmet mais ne peut pas la fabriquer.
+// Données signées : voir internal/access.
+type Grant struct {
+	state            protoimpl.MessageState `protogen:"open.v1"`
+	FileId           string                 `protobuf:"bytes,1,opt,name=file_id,json=fileId,proto3" json:"file_id,omitempty"`
+	OwnerPublicKey   []byte                 `protobuf:"bytes,2,opt,name=owner_public_key,json=ownerPublicKey,proto3" json:"owner_public_key,omitempty"`
+	GranteePublicKey []byte                 `protobuf:"bytes,3,opt,name=grantee_public_key,json=granteePublicKey,proto3" json:"grantee_public_key,omitempty"`
+	IssuedAt         int64                  `protobuf:"varint,4,opt,name=issued_at,json=issuedAt,proto3" json:"issued_at,omitempty"`    // secondes Unix
+	ExpiresAt        int64                  `protobuf:"varint,5,opt,name=expires_at,json=expiresAt,proto3" json:"expires_at,omitempty"` // secondes Unix
+	Signature        []byte                 `protobuf:"bytes,6,opt,name=signature,proto3" json:"signature,omitempty"`
+	unknownFields    protoimpl.UnknownFields
+	sizeCache        protoimpl.SizeCache
+}
+
+func (x *Grant) Reset() {
+	*x = Grant{}
+	mi := &file_node_proto_msgTypes[5]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *Grant) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*Grant) ProtoMessage() {}
+
+func (x *Grant) ProtoReflect() protoreflect.Message {
+	mi := &file_node_proto_msgTypes[5]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use Grant.ProtoReflect.Descriptor instead.
+func (*Grant) Descriptor() ([]byte, []int) {
+	return file_node_proto_rawDescGZIP(), []int{5}
+}
+
+func (x *Grant) GetFileId() string {
+	if x != nil {
+		return x.FileId
+	}
+	return ""
+}
+
+func (x *Grant) GetOwnerPublicKey() []byte {
+	if x != nil {
+		return x.OwnerPublicKey
+	}
+	return nil
+}
+
+func (x *Grant) GetGranteePublicKey() []byte {
+	if x != nil {
+		return x.GranteePublicKey
+	}
+	return nil
+}
+
+func (x *Grant) GetIssuedAt() int64 {
+	if x != nil {
+		return x.IssuedAt
+	}
+	return 0
+}
+
+func (x *Grant) GetExpiresAt() int64 {
+	if x != nil {
+		return x.ExpiresAt
+	}
+	return 0
+}
+
+func (x *Grant) GetSignature() []byte {
+	if x != nil {
+		return x.Signature
+	}
+	return nil
+}
+
+// Retrait d'un accès, signé par le propriétaire : les autorisations émises avant
+// revoked_at pour ce destinataire ne sont plus acceptées.
+type Revocation struct {
+	state            protoimpl.MessageState `protogen:"open.v1"`
+	FileId           string                 `protobuf:"bytes,1,opt,name=file_id,json=fileId,proto3" json:"file_id,omitempty"`
+	OwnerPublicKey   []byte                 `protobuf:"bytes,2,opt,name=owner_public_key,json=ownerPublicKey,proto3" json:"owner_public_key,omitempty"`
+	GranteePublicKey []byte                 `protobuf:"bytes,3,opt,name=grantee_public_key,json=granteePublicKey,proto3" json:"grantee_public_key,omitempty"`
+	RevokedAt        int64                  `protobuf:"varint,4,opt,name=revoked_at,json=revokedAt,proto3" json:"revoked_at,omitempty"` // secondes Unix
+	Signature        []byte                 `protobuf:"bytes,5,opt,name=signature,proto3" json:"signature,omitempty"`
+	unknownFields    protoimpl.UnknownFields
+	sizeCache        protoimpl.SizeCache
+}
+
+func (x *Revocation) Reset() {
+	*x = Revocation{}
+	mi := &file_node_proto_msgTypes[6]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *Revocation) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*Revocation) ProtoMessage() {}
+
+func (x *Revocation) ProtoReflect() protoreflect.Message {
+	mi := &file_node_proto_msgTypes[6]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use Revocation.ProtoReflect.Descriptor instead.
+func (*Revocation) Descriptor() ([]byte, []int) {
+	return file_node_proto_rawDescGZIP(), []int{6}
+}
+
+func (x *Revocation) GetFileId() string {
+	if x != nil {
+		return x.FileId
+	}
+	return ""
+}
+
+func (x *Revocation) GetOwnerPublicKey() []byte {
+	if x != nil {
+		return x.OwnerPublicKey
+	}
+	return nil
+}
+
+func (x *Revocation) GetGranteePublicKey() []byte {
+	if x != nil {
+		return x.GranteePublicKey
+	}
+	return nil
+}
+
+func (x *Revocation) GetRevokedAt() int64 {
+	if x != nil {
+		return x.RevokedAt
+	}
+	return 0
+}
+
+func (x *Revocation) GetSignature() []byte {
+	if x != nil {
+		return x.Signature
+	}
+	return nil
+}
+
 type GetShareRequest struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	FileId        string                 `protobuf:"bytes,1,opt,name=file_id,json=fileId,proto3" json:"file_id,omitempty"`
 	Epoch         uint64                 `protobuf:"varint,2,opt,name=epoch,proto3" json:"epoch,omitempty"` // époque attendue par le client
 	Proof         *Proof                 `protobuf:"bytes,3,opt,name=proof,proto3" json:"proof,omitempty"`
+	Grant         *Grant                 `protobuf:"bytes,4,opt,name=grant,proto3" json:"grant,omitempty"` // absent pour le propriétaire
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
 
 func (x *GetShareRequest) Reset() {
 	*x = GetShareRequest{}
-	mi := &file_node_proto_msgTypes[5]
+	mi := &file_node_proto_msgTypes[7]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -343,7 +510,7 @@ func (x *GetShareRequest) String() string {
 func (*GetShareRequest) ProtoMessage() {}
 
 func (x *GetShareRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_node_proto_msgTypes[5]
+	mi := &file_node_proto_msgTypes[7]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -356,7 +523,7 @@ func (x *GetShareRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use GetShareRequest.ProtoReflect.Descriptor instead.
 func (*GetShareRequest) Descriptor() ([]byte, []int) {
-	return file_node_proto_rawDescGZIP(), []int{5}
+	return file_node_proto_rawDescGZIP(), []int{7}
 }
 
 func (x *GetShareRequest) GetFileId() string {
@@ -380,6 +547,13 @@ func (x *GetShareRequest) GetProof() *Proof {
 	return nil
 }
 
+func (x *GetShareRequest) GetGrant() *Grant {
+	if x != nil {
+		return x.Grant
+	}
+	return nil
+}
+
 type GetShareResponse struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	Share         *Share                 `protobuf:"bytes,1,opt,name=share,proto3" json:"share,omitempty"`
@@ -389,7 +563,7 @@ type GetShareResponse struct {
 
 func (x *GetShareResponse) Reset() {
 	*x = GetShareResponse{}
-	mi := &file_node_proto_msgTypes[6]
+	mi := &file_node_proto_msgTypes[8]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -401,7 +575,7 @@ func (x *GetShareResponse) String() string {
 func (*GetShareResponse) ProtoMessage() {}
 
 func (x *GetShareResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_node_proto_msgTypes[6]
+	mi := &file_node_proto_msgTypes[8]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -414,7 +588,7 @@ func (x *GetShareResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use GetShareResponse.ProtoReflect.Descriptor instead.
 func (*GetShareResponse) Descriptor() ([]byte, []int) {
-	return file_node_proto_rawDescGZIP(), []int{6}
+	return file_node_proto_rawDescGZIP(), []int{8}
 }
 
 func (x *GetShareResponse) GetShare() *Share {
@@ -433,7 +607,7 @@ type PutBlocksResponse struct {
 
 func (x *PutBlocksResponse) Reset() {
 	*x = PutBlocksResponse{}
-	mi := &file_node_proto_msgTypes[7]
+	mi := &file_node_proto_msgTypes[9]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -445,7 +619,7 @@ func (x *PutBlocksResponse) String() string {
 func (*PutBlocksResponse) ProtoMessage() {}
 
 func (x *PutBlocksResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_node_proto_msgTypes[7]
+	mi := &file_node_proto_msgTypes[9]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -458,7 +632,7 @@ func (x *PutBlocksResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use PutBlocksResponse.ProtoReflect.Descriptor instead.
 func (*PutBlocksResponse) Descriptor() ([]byte, []int) {
-	return file_node_proto_rawDescGZIP(), []int{7}
+	return file_node_proto_rawDescGZIP(), []int{9}
 }
 
 func (x *PutBlocksResponse) GetStored() uint32 {
@@ -472,13 +646,14 @@ type GetBlocksRequest struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	FileId        string                 `protobuf:"bytes,1,opt,name=file_id,json=fileId,proto3" json:"file_id,omitempty"`
 	Proof         *Proof                 `protobuf:"bytes,2,opt,name=proof,proto3" json:"proof,omitempty"`
+	Grant         *Grant                 `protobuf:"bytes,3,opt,name=grant,proto3" json:"grant,omitempty"` // absent pour le propriétaire
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
 
 func (x *GetBlocksRequest) Reset() {
 	*x = GetBlocksRequest{}
-	mi := &file_node_proto_msgTypes[8]
+	mi := &file_node_proto_msgTypes[10]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -490,7 +665,7 @@ func (x *GetBlocksRequest) String() string {
 func (*GetBlocksRequest) ProtoMessage() {}
 
 func (x *GetBlocksRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_node_proto_msgTypes[8]
+	mi := &file_node_proto_msgTypes[10]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -503,7 +678,7 @@ func (x *GetBlocksRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use GetBlocksRequest.ProtoReflect.Descriptor instead.
 func (*GetBlocksRequest) Descriptor() ([]byte, []int) {
-	return file_node_proto_rawDescGZIP(), []int{8}
+	return file_node_proto_rawDescGZIP(), []int{10}
 }
 
 func (x *GetBlocksRequest) GetFileId() string {
@@ -520,6 +695,93 @@ func (x *GetBlocksRequest) GetProof() *Proof {
 	return nil
 }
 
+func (x *GetBlocksRequest) GetGrant() *Grant {
+	if x != nil {
+		return x.Grant
+	}
+	return nil
+}
+
+type RevokeRequest struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Revocation    *Revocation            `protobuf:"bytes,1,opt,name=revocation,proto3" json:"revocation,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *RevokeRequest) Reset() {
+	*x = RevokeRequest{}
+	mi := &file_node_proto_msgTypes[11]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *RevokeRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*RevokeRequest) ProtoMessage() {}
+
+func (x *RevokeRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_node_proto_msgTypes[11]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use RevokeRequest.ProtoReflect.Descriptor instead.
+func (*RevokeRequest) Descriptor() ([]byte, []int) {
+	return file_node_proto_rawDescGZIP(), []int{11}
+}
+
+func (x *RevokeRequest) GetRevocation() *Revocation {
+	if x != nil {
+		return x.Revocation
+	}
+	return nil
+}
+
+type RevokeResponse struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *RevokeResponse) Reset() {
+	*x = RevokeResponse{}
+	mi := &file_node_proto_msgTypes[12]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *RevokeResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*RevokeResponse) ProtoMessage() {}
+
+func (x *RevokeResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_node_proto_msgTypes[12]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use RevokeResponse.ProtoReflect.Descriptor instead.
+func (*RevokeResponse) Descriptor() ([]byte, []int) {
+	return file_node_proto_rawDescGZIP(), []int{12}
+}
+
 // Sous-part d'un fichier envoyée pendant un renouvellement.
 type SubShare struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
@@ -531,7 +793,7 @@ type SubShare struct {
 
 func (x *SubShare) Reset() {
 	*x = SubShare{}
-	mi := &file_node_proto_msgTypes[9]
+	mi := &file_node_proto_msgTypes[13]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -543,7 +805,7 @@ func (x *SubShare) String() string {
 func (*SubShare) ProtoMessage() {}
 
 func (x *SubShare) ProtoReflect() protoreflect.Message {
-	mi := &file_node_proto_msgTypes[9]
+	mi := &file_node_proto_msgTypes[13]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -556,7 +818,7 @@ func (x *SubShare) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use SubShare.ProtoReflect.Descriptor instead.
 func (*SubShare) Descriptor() ([]byte, []int) {
-	return file_node_proto_rawDescGZIP(), []int{9}
+	return file_node_proto_rawDescGZIP(), []int{13}
 }
 
 func (x *SubShare) GetFileId() string {
@@ -585,7 +847,7 @@ type DeliverSubSharesRequest struct {
 
 func (x *DeliverSubSharesRequest) Reset() {
 	*x = DeliverSubSharesRequest{}
-	mi := &file_node_proto_msgTypes[10]
+	mi := &file_node_proto_msgTypes[14]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -597,7 +859,7 @@ func (x *DeliverSubSharesRequest) String() string {
 func (*DeliverSubSharesRequest) ProtoMessage() {}
 
 func (x *DeliverSubSharesRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_node_proto_msgTypes[10]
+	mi := &file_node_proto_msgTypes[14]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -610,7 +872,7 @@ func (x *DeliverSubSharesRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use DeliverSubSharesRequest.ProtoReflect.Descriptor instead.
 func (*DeliverSubSharesRequest) Descriptor() ([]byte, []int) {
-	return file_node_proto_rawDescGZIP(), []int{10}
+	return file_node_proto_rawDescGZIP(), []int{14}
 }
 
 func (x *DeliverSubSharesRequest) GetFromX() uint32 {
@@ -649,7 +911,7 @@ type DeliverSubSharesResponse struct {
 
 func (x *DeliverSubSharesResponse) Reset() {
 	*x = DeliverSubSharesResponse{}
-	mi := &file_node_proto_msgTypes[11]
+	mi := &file_node_proto_msgTypes[15]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -661,7 +923,7 @@ func (x *DeliverSubSharesResponse) String() string {
 func (*DeliverSubSharesResponse) ProtoMessage() {}
 
 func (x *DeliverSubSharesResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_node_proto_msgTypes[11]
+	mi := &file_node_proto_msgTypes[15]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -674,7 +936,7 @@ func (x *DeliverSubSharesResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use DeliverSubSharesResponse.ProtoReflect.Descriptor instead.
 func (*DeliverSubSharesResponse) Descriptor() ([]byte, []int) {
-	return file_node_proto_rawDescGZIP(), []int{11}
+	return file_node_proto_rawDescGZIP(), []int{15}
 }
 
 // Nœud participant à un renouvellement.
@@ -688,7 +950,7 @@ type Participant struct {
 
 func (x *Participant) Reset() {
 	*x = Participant{}
-	mi := &file_node_proto_msgTypes[12]
+	mi := &file_node_proto_msgTypes[16]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -700,7 +962,7 @@ func (x *Participant) String() string {
 func (*Participant) ProtoMessage() {}
 
 func (x *Participant) ProtoReflect() protoreflect.Message {
-	mi := &file_node_proto_msgTypes[12]
+	mi := &file_node_proto_msgTypes[16]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -713,7 +975,7 @@ func (x *Participant) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use Participant.ProtoReflect.Descriptor instead.
 func (*Participant) Descriptor() ([]byte, []int) {
-	return file_node_proto_rawDescGZIP(), []int{12}
+	return file_node_proto_rawDescGZIP(), []int{16}
 }
 
 func (x *Participant) GetX() uint32 {
@@ -741,7 +1003,7 @@ type PrepareRequest struct {
 
 func (x *PrepareRequest) Reset() {
 	*x = PrepareRequest{}
-	mi := &file_node_proto_msgTypes[13]
+	mi := &file_node_proto_msgTypes[17]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -753,7 +1015,7 @@ func (x *PrepareRequest) String() string {
 func (*PrepareRequest) ProtoMessage() {}
 
 func (x *PrepareRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_node_proto_msgTypes[13]
+	mi := &file_node_proto_msgTypes[17]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -766,7 +1028,7 @@ func (x *PrepareRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use PrepareRequest.ProtoReflect.Descriptor instead.
 func (*PrepareRequest) Descriptor() ([]byte, []int) {
-	return file_node_proto_rawDescGZIP(), []int{13}
+	return file_node_proto_rawDescGZIP(), []int{17}
 }
 
 func (x *PrepareRequest) GetEpoch() uint64 {
@@ -799,7 +1061,7 @@ type EpochRequest struct {
 
 func (x *EpochRequest) Reset() {
 	*x = EpochRequest{}
-	mi := &file_node_proto_msgTypes[14]
+	mi := &file_node_proto_msgTypes[18]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -811,7 +1073,7 @@ func (x *EpochRequest) String() string {
 func (*EpochRequest) ProtoMessage() {}
 
 func (x *EpochRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_node_proto_msgTypes[14]
+	mi := &file_node_proto_msgTypes[18]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -824,7 +1086,7 @@ func (x *EpochRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use EpochRequest.ProtoReflect.Descriptor instead.
 func (*EpochRequest) Descriptor() ([]byte, []int) {
-	return file_node_proto_rawDescGZIP(), []int{14}
+	return file_node_proto_rawDescGZIP(), []int{18}
 }
 
 func (x *EpochRequest) GetEpoch() uint64 {
@@ -842,7 +1104,7 @@ type EpochResponse struct {
 
 func (x *EpochResponse) Reset() {
 	*x = EpochResponse{}
-	mi := &file_node_proto_msgTypes[15]
+	mi := &file_node_proto_msgTypes[19]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -854,7 +1116,7 @@ func (x *EpochResponse) String() string {
 func (*EpochResponse) ProtoMessage() {}
 
 func (x *EpochResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_node_proto_msgTypes[15]
+	mi := &file_node_proto_msgTypes[19]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -867,7 +1129,7 @@ func (x *EpochResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use EpochResponse.ProtoReflect.Descriptor instead.
 func (*EpochResponse) Descriptor() ([]byte, []int) {
-	return file_node_proto_rawDescGZIP(), []int{15}
+	return file_node_proto_rawDescGZIP(), []int{19}
 }
 
 var File_node_proto protoreflect.FileDescriptor
@@ -895,18 +1157,41 @@ const file_node_proto_rawDesc = "" +
 	"\afile_id\x18\x01 \x01(\tR\x06fileId\x12&\n" +
 	"\x05share\x18\x02 \x01(\v2\x10.safevault.ShareR\x05share\x12&\n" +
 	"\x05proof\x18\x03 \x01(\v2\x10.safevault.ProofR\x05proof\"\x12\n" +
-	"\x10PutShareResponse\"h\n" +
+	"\x10PutShareResponse\"\xd2\x01\n" +
+	"\x05Grant\x12\x17\n" +
+	"\afile_id\x18\x01 \x01(\tR\x06fileId\x12(\n" +
+	"\x10owner_public_key\x18\x02 \x01(\fR\x0eownerPublicKey\x12,\n" +
+	"\x12grantee_public_key\x18\x03 \x01(\fR\x10granteePublicKey\x12\x1b\n" +
+	"\tissued_at\x18\x04 \x01(\x03R\bissuedAt\x12\x1d\n" +
+	"\n" +
+	"expires_at\x18\x05 \x01(\x03R\texpiresAt\x12\x1c\n" +
+	"\tsignature\x18\x06 \x01(\fR\tsignature\"\xba\x01\n" +
+	"\n" +
+	"Revocation\x12\x17\n" +
+	"\afile_id\x18\x01 \x01(\tR\x06fileId\x12(\n" +
+	"\x10owner_public_key\x18\x02 \x01(\fR\x0eownerPublicKey\x12,\n" +
+	"\x12grantee_public_key\x18\x03 \x01(\fR\x10granteePublicKey\x12\x1d\n" +
+	"\n" +
+	"revoked_at\x18\x04 \x01(\x03R\trevokedAt\x12\x1c\n" +
+	"\tsignature\x18\x05 \x01(\fR\tsignature\"\x90\x01\n" +
 	"\x0fGetShareRequest\x12\x17\n" +
 	"\afile_id\x18\x01 \x01(\tR\x06fileId\x12\x14\n" +
 	"\x05epoch\x18\x02 \x01(\x04R\x05epoch\x12&\n" +
-	"\x05proof\x18\x03 \x01(\v2\x10.safevault.ProofR\x05proof\":\n" +
+	"\x05proof\x18\x03 \x01(\v2\x10.safevault.ProofR\x05proof\x12&\n" +
+	"\x05grant\x18\x04 \x01(\v2\x10.safevault.GrantR\x05grant\":\n" +
 	"\x10GetShareResponse\x12&\n" +
 	"\x05share\x18\x01 \x01(\v2\x10.safevault.ShareR\x05share\"+\n" +
 	"\x11PutBlocksResponse\x12\x16\n" +
-	"\x06stored\x18\x01 \x01(\rR\x06stored\"S\n" +
+	"\x06stored\x18\x01 \x01(\rR\x06stored\"{\n" +
 	"\x10GetBlocksRequest\x12\x17\n" +
 	"\afile_id\x18\x01 \x01(\tR\x06fileId\x12&\n" +
-	"\x05proof\x18\x02 \x01(\v2\x10.safevault.ProofR\x05proof\"9\n" +
+	"\x05proof\x18\x02 \x01(\v2\x10.safevault.ProofR\x05proof\x12&\n" +
+	"\x05grant\x18\x03 \x01(\v2\x10.safevault.GrantR\x05grant\"F\n" +
+	"\rRevokeRequest\x125\n" +
+	"\n" +
+	"revocation\x18\x01 \x01(\v2\x15.safevault.RevocationR\n" +
+	"revocation\"\x10\n" +
+	"\x0eRevokeResponse\"9\n" +
 	"\bSubShare\x12\x17\n" +
 	"\afile_id\x18\x01 \x01(\tR\x06fileId\x12\x14\n" +
 	"\x05value\x18\x02 \x01(\fR\x05value\"\x9a\x01\n" +
@@ -926,12 +1211,13 @@ const file_node_proto_rawDesc = "" +
 	"\fparticipants\x18\x03 \x03(\v2\x16.safevault.ParticipantR\fparticipants\"$\n" +
 	"\fEpochRequest\x12\x14\n" +
 	"\x05epoch\x18\x01 \x01(\x04R\x05epoch\"\x0f\n" +
-	"\rEpochResponse2\x8d\x02\n" +
+	"\rEpochResponse2\xcc\x02\n" +
 	"\x04Node\x12C\n" +
 	"\bPutShare\x12\x1a.safevault.PutShareRequest\x1a\x1b.safevault.PutShareResponse\x12C\n" +
 	"\bGetShare\x12\x1a.safevault.GetShareRequest\x1a\x1b.safevault.GetShareResponse\x12=\n" +
 	"\tPutBlocks\x12\x10.safevault.Block\x1a\x1c.safevault.PutBlocksResponse(\x01\x12<\n" +
-	"\tGetBlocks\x12\x1b.safevault.GetBlocksRequest\x1a\x10.safevault.Block0\x012f\n" +
+	"\tGetBlocks\x12\x1b.safevault.GetBlocksRequest\x1a\x10.safevault.Block0\x01\x12=\n" +
+	"\x06Revoke\x12\x18.safevault.RevokeRequest\x1a\x19.safevault.RevokeResponse2f\n" +
 	"\aRenewal\x12[\n" +
 	"\x10DeliverSubShares\x12\".safevault.DeliverSubSharesRequest\x1a#.safevault.DeliverSubSharesResponse2\xc0\x01\n" +
 	"\x05Epoch\x12>\n" +
@@ -951,55 +1237,64 @@ func file_node_proto_rawDescGZIP() []byte {
 	return file_node_proto_rawDescData
 }
 
-var file_node_proto_msgTypes = make([]protoimpl.MessageInfo, 16)
+var file_node_proto_msgTypes = make([]protoimpl.MessageInfo, 20)
 var file_node_proto_goTypes = []any{
 	(*Proof)(nil),                    // 0: safevault.Proof
 	(*Share)(nil),                    // 1: safevault.Share
 	(*Block)(nil),                    // 2: safevault.Block
 	(*PutShareRequest)(nil),          // 3: safevault.PutShareRequest
 	(*PutShareResponse)(nil),         // 4: safevault.PutShareResponse
-	(*GetShareRequest)(nil),          // 5: safevault.GetShareRequest
-	(*GetShareResponse)(nil),         // 6: safevault.GetShareResponse
-	(*PutBlocksResponse)(nil),        // 7: safevault.PutBlocksResponse
-	(*GetBlocksRequest)(nil),         // 8: safevault.GetBlocksRequest
-	(*SubShare)(nil),                 // 9: safevault.SubShare
-	(*DeliverSubSharesRequest)(nil),  // 10: safevault.DeliverSubSharesRequest
-	(*DeliverSubSharesResponse)(nil), // 11: safevault.DeliverSubSharesResponse
-	(*Participant)(nil),              // 12: safevault.Participant
-	(*PrepareRequest)(nil),           // 13: safevault.PrepareRequest
-	(*EpochRequest)(nil),             // 14: safevault.EpochRequest
-	(*EpochResponse)(nil),            // 15: safevault.EpochResponse
+	(*Grant)(nil),                    // 5: safevault.Grant
+	(*Revocation)(nil),               // 6: safevault.Revocation
+	(*GetShareRequest)(nil),          // 7: safevault.GetShareRequest
+	(*GetShareResponse)(nil),         // 8: safevault.GetShareResponse
+	(*PutBlocksResponse)(nil),        // 9: safevault.PutBlocksResponse
+	(*GetBlocksRequest)(nil),         // 10: safevault.GetBlocksRequest
+	(*RevokeRequest)(nil),            // 11: safevault.RevokeRequest
+	(*RevokeResponse)(nil),           // 12: safevault.RevokeResponse
+	(*SubShare)(nil),                 // 13: safevault.SubShare
+	(*DeliverSubSharesRequest)(nil),  // 14: safevault.DeliverSubSharesRequest
+	(*DeliverSubSharesResponse)(nil), // 15: safevault.DeliverSubSharesResponse
+	(*Participant)(nil),              // 16: safevault.Participant
+	(*PrepareRequest)(nil),           // 17: safevault.PrepareRequest
+	(*EpochRequest)(nil),             // 18: safevault.EpochRequest
+	(*EpochResponse)(nil),            // 19: safevault.EpochResponse
 }
 var file_node_proto_depIdxs = []int32{
 	0,  // 0: safevault.Block.proof:type_name -> safevault.Proof
 	1,  // 1: safevault.PutShareRequest.share:type_name -> safevault.Share
 	0,  // 2: safevault.PutShareRequest.proof:type_name -> safevault.Proof
 	0,  // 3: safevault.GetShareRequest.proof:type_name -> safevault.Proof
-	1,  // 4: safevault.GetShareResponse.share:type_name -> safevault.Share
-	0,  // 5: safevault.GetBlocksRequest.proof:type_name -> safevault.Proof
-	9,  // 6: safevault.DeliverSubSharesRequest.sub_shares:type_name -> safevault.SubShare
-	12, // 7: safevault.PrepareRequest.participants:type_name -> safevault.Participant
-	3,  // 8: safevault.Node.PutShare:input_type -> safevault.PutShareRequest
-	5,  // 9: safevault.Node.GetShare:input_type -> safevault.GetShareRequest
-	2,  // 10: safevault.Node.PutBlocks:input_type -> safevault.Block
-	8,  // 11: safevault.Node.GetBlocks:input_type -> safevault.GetBlocksRequest
-	10, // 12: safevault.Renewal.DeliverSubShares:input_type -> safevault.DeliverSubSharesRequest
-	13, // 13: safevault.Epoch.Prepare:input_type -> safevault.PrepareRequest
-	14, // 14: safevault.Epoch.Commit:input_type -> safevault.EpochRequest
-	14, // 15: safevault.Epoch.Abort:input_type -> safevault.EpochRequest
-	4,  // 16: safevault.Node.PutShare:output_type -> safevault.PutShareResponse
-	6,  // 17: safevault.Node.GetShare:output_type -> safevault.GetShareResponse
-	7,  // 18: safevault.Node.PutBlocks:output_type -> safevault.PutBlocksResponse
-	2,  // 19: safevault.Node.GetBlocks:output_type -> safevault.Block
-	11, // 20: safevault.Renewal.DeliverSubShares:output_type -> safevault.DeliverSubSharesResponse
-	15, // 21: safevault.Epoch.Prepare:output_type -> safevault.EpochResponse
-	15, // 22: safevault.Epoch.Commit:output_type -> safevault.EpochResponse
-	15, // 23: safevault.Epoch.Abort:output_type -> safevault.EpochResponse
-	16, // [16:24] is the sub-list for method output_type
-	8,  // [8:16] is the sub-list for method input_type
-	8,  // [8:8] is the sub-list for extension type_name
-	8,  // [8:8] is the sub-list for extension extendee
-	0,  // [0:8] is the sub-list for field type_name
+	5,  // 4: safevault.GetShareRequest.grant:type_name -> safevault.Grant
+	1,  // 5: safevault.GetShareResponse.share:type_name -> safevault.Share
+	0,  // 6: safevault.GetBlocksRequest.proof:type_name -> safevault.Proof
+	5,  // 7: safevault.GetBlocksRequest.grant:type_name -> safevault.Grant
+	6,  // 8: safevault.RevokeRequest.revocation:type_name -> safevault.Revocation
+	13, // 9: safevault.DeliverSubSharesRequest.sub_shares:type_name -> safevault.SubShare
+	16, // 10: safevault.PrepareRequest.participants:type_name -> safevault.Participant
+	3,  // 11: safevault.Node.PutShare:input_type -> safevault.PutShareRequest
+	7,  // 12: safevault.Node.GetShare:input_type -> safevault.GetShareRequest
+	2,  // 13: safevault.Node.PutBlocks:input_type -> safevault.Block
+	10, // 14: safevault.Node.GetBlocks:input_type -> safevault.GetBlocksRequest
+	11, // 15: safevault.Node.Revoke:input_type -> safevault.RevokeRequest
+	14, // 16: safevault.Renewal.DeliverSubShares:input_type -> safevault.DeliverSubSharesRequest
+	17, // 17: safevault.Epoch.Prepare:input_type -> safevault.PrepareRequest
+	18, // 18: safevault.Epoch.Commit:input_type -> safevault.EpochRequest
+	18, // 19: safevault.Epoch.Abort:input_type -> safevault.EpochRequest
+	4,  // 20: safevault.Node.PutShare:output_type -> safevault.PutShareResponse
+	8,  // 21: safevault.Node.GetShare:output_type -> safevault.GetShareResponse
+	9,  // 22: safevault.Node.PutBlocks:output_type -> safevault.PutBlocksResponse
+	2,  // 23: safevault.Node.GetBlocks:output_type -> safevault.Block
+	12, // 24: safevault.Node.Revoke:output_type -> safevault.RevokeResponse
+	15, // 25: safevault.Renewal.DeliverSubShares:output_type -> safevault.DeliverSubSharesResponse
+	19, // 26: safevault.Epoch.Prepare:output_type -> safevault.EpochResponse
+	19, // 27: safevault.Epoch.Commit:output_type -> safevault.EpochResponse
+	19, // 28: safevault.Epoch.Abort:output_type -> safevault.EpochResponse
+	20, // [20:29] is the sub-list for method output_type
+	11, // [11:20] is the sub-list for method input_type
+	11, // [11:11] is the sub-list for extension type_name
+	11, // [11:11] is the sub-list for extension extendee
+	0,  // [0:11] is the sub-list for field type_name
 }
 
 func init() { file_node_proto_init() }
@@ -1013,7 +1308,7 @@ func file_node_proto_init() {
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_node_proto_rawDesc), len(file_node_proto_rawDesc)),
 			NumEnums:      0,
-			NumMessages:   16,
+			NumMessages:   20,
 			NumExtensions: 0,
 			NumServices:   3,
 		},

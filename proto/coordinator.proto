@@ -3,6 +3,8 @@ syntax = "proto3";
 
 package safevault;
 
+import "node.proto";
+
 option go_package = "safevault/proto;pb";
 
 // ---------- Inscription et connexion ----------
@@ -52,7 +54,9 @@ message Manifest {
 }
 
 message CreateFileRequest {
-  string name = 1;
+  // Nom chiffré côté client : le coordinateur ne le lit jamais.
+  bytes encrypted_name = 1;
+  // Taille du fichier après remplissage (arrondie) : la taille exacte reste chez le client.
   uint64 size = 2;
 }
 
@@ -75,8 +79,12 @@ message ListFilesRequest {}
 
 message FileInfo {
   string file_id = 1;
-  string name = 2;
-  uint64 size = 3;
+  // Nom chiffré : pour le propriétaire, avec sa propre clé ; pour un destinataire,
+  // avec sa clé publique (copie jointe au partage).
+  bytes encrypted_name = 2;
+  uint64 size = 3;        // taille arrondie
+  string owner = 4;       // nom d'utilisateur du propriétaire
+  bool shared = 5;        // vrai si le fichier est partagé AVEC l'utilisateur
 }
 
 message ListFilesResponse {
@@ -92,7 +100,33 @@ message GetFileResponse {
   uint32 t = 2;
   Manifest manifest = 3;
   repeated NodeInfo nodes = 4;
+  Grant grant = 5;                // autorisation à présenter aux nœuds (destinataire seulement)
 }
+
+// ---------- Partage ----------
+
+message GetUserKeyRequest {
+  string username = 1;
+}
+
+message GetUserKeyResponse {
+  bytes public_key = 1; // clé publique Ed25519 ; son empreinte est affichée au propriétaire
+}
+
+message ShareFileRequest {
+  string grantee = 1;          // nom d'utilisateur du destinataire
+  Grant grant = 2;             // signée par le propriétaire
+  bytes encrypted_name = 3;    // nom du fichier chiffré pour le destinataire
+}
+
+message ShareFileResponse {}
+
+message RevokeShareRequest {
+  string file_id = 1;
+  string grantee = 2;
+}
+
+message RevokeShareResponse {}
 
 service Coordinator {
   // Inscrit un utilisateur avec sa clé publique.
@@ -107,6 +141,12 @@ service Coordinator {
   rpc ConfirmUpload(ConfirmUploadRequest) returns (ConfirmUploadResponse);
   // Liste les fichiers accessibles à l'utilisateur connecté.
   rpc ListFiles(ListFilesRequest) returns (ListFilesResponse);
-  // Donne les informations nécessaires pour relire un fichier.
+  // Donne les informations nécessaires pour relire un fichier (propriétaire ou destinataire).
   rpc GetFile(GetFileRequest) returns (GetFileResponse);
+  // Renvoie la clé publique d'un utilisateur, pour lui partager un fichier.
+  rpc GetUserKey(GetUserKeyRequest) returns (GetUserKeyResponse);
+  // Enregistre un partage : le propriétaire fournit l'autorisation signée.
+  rpc ShareFile(ShareFileRequest) returns (ShareFileResponse);
+  // Retire un partage côté coordinateur (la révocation signée part aussi vers les nœuds).
+  rpc RevokeShare(RevokeShareRequest) returns (RevokeShareResponse);
 }

@@ -436,9 +436,11 @@ func (x *Manifest) GetSize() uint64 {
 }
 
 type CreateFileRequest struct {
-	state         protoimpl.MessageState `protogen:"open.v1"`
-	Name          string                 `protobuf:"bytes,1,opt,name=name,proto3" json:"name,omitempty"`
-	Size          uint64                 `protobuf:"varint,2,opt,name=size,proto3" json:"size,omitempty"`
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// Nom chiffré côté client : le coordinateur ne le lit jamais.
+	EncryptedName []byte `protobuf:"bytes,1,opt,name=encrypted_name,json=encryptedName,proto3" json:"encrypted_name,omitempty"`
+	// Taille du fichier après remplissage (arrondie) : la taille exacte reste chez le client.
+	Size          uint64 `protobuf:"varint,2,opt,name=size,proto3" json:"size,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -473,11 +475,11 @@ func (*CreateFileRequest) Descriptor() ([]byte, []int) {
 	return file_coordinator_proto_rawDescGZIP(), []int{8}
 }
 
-func (x *CreateFileRequest) GetName() string {
+func (x *CreateFileRequest) GetEncryptedName() []byte {
 	if x != nil {
-		return x.Name
+		return x.EncryptedName
 	}
-	return ""
+	return nil
 }
 
 func (x *CreateFileRequest) GetSize() uint64 {
@@ -688,10 +690,14 @@ func (*ListFilesRequest) Descriptor() ([]byte, []int) {
 }
 
 type FileInfo struct {
-	state         protoimpl.MessageState `protogen:"open.v1"`
-	FileId        string                 `protobuf:"bytes,1,opt,name=file_id,json=fileId,proto3" json:"file_id,omitempty"`
-	Name          string                 `protobuf:"bytes,2,opt,name=name,proto3" json:"name,omitempty"`
-	Size          uint64                 `protobuf:"varint,3,opt,name=size,proto3" json:"size,omitempty"`
+	state  protoimpl.MessageState `protogen:"open.v1"`
+	FileId string                 `protobuf:"bytes,1,opt,name=file_id,json=fileId,proto3" json:"file_id,omitempty"`
+	// Nom chiffré : pour le propriétaire, avec sa propre clé ; pour un destinataire,
+	// avec sa clé publique (copie jointe au partage).
+	EncryptedName []byte `protobuf:"bytes,2,opt,name=encrypted_name,json=encryptedName,proto3" json:"encrypted_name,omitempty"`
+	Size          uint64 `protobuf:"varint,3,opt,name=size,proto3" json:"size,omitempty"`     // taille arrondie
+	Owner         string `protobuf:"bytes,4,opt,name=owner,proto3" json:"owner,omitempty"`    // nom d'utilisateur du propriétaire
+	Shared        bool   `protobuf:"varint,5,opt,name=shared,proto3" json:"shared,omitempty"` // vrai si le fichier est partagé AVEC l'utilisateur
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -733,11 +739,11 @@ func (x *FileInfo) GetFileId() string {
 	return ""
 }
 
-func (x *FileInfo) GetName() string {
+func (x *FileInfo) GetEncryptedName() []byte {
 	if x != nil {
-		return x.Name
+		return x.EncryptedName
 	}
-	return ""
+	return nil
 }
 
 func (x *FileInfo) GetSize() uint64 {
@@ -745,6 +751,20 @@ func (x *FileInfo) GetSize() uint64 {
 		return x.Size
 	}
 	return 0
+}
+
+func (x *FileInfo) GetOwner() string {
+	if x != nil {
+		return x.Owner
+	}
+	return ""
+}
+
+func (x *FileInfo) GetShared() bool {
+	if x != nil {
+		return x.Shared
+	}
+	return false
 }
 
 type ListFilesResponse struct {
@@ -841,6 +861,7 @@ type GetFileResponse struct {
 	T             uint32                 `protobuf:"varint,2,opt,name=t,proto3" json:"t,omitempty"`
 	Manifest      *Manifest              `protobuf:"bytes,3,opt,name=manifest,proto3" json:"manifest,omitempty"`
 	Nodes         []*NodeInfo            `protobuf:"bytes,4,rep,name=nodes,proto3" json:"nodes,omitempty"`
+	Grant         *Grant                 `protobuf:"bytes,5,opt,name=grant,proto3" json:"grant,omitempty"` // autorisation à présenter aux nœuds (destinataire seulement)
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -903,11 +924,291 @@ func (x *GetFileResponse) GetNodes() []*NodeInfo {
 	return nil
 }
 
+func (x *GetFileResponse) GetGrant() *Grant {
+	if x != nil {
+		return x.Grant
+	}
+	return nil
+}
+
+type GetUserKeyRequest struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Username      string                 `protobuf:"bytes,1,opt,name=username,proto3" json:"username,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *GetUserKeyRequest) Reset() {
+	*x = GetUserKeyRequest{}
+	mi := &file_coordinator_proto_msgTypes[17]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *GetUserKeyRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*GetUserKeyRequest) ProtoMessage() {}
+
+func (x *GetUserKeyRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_coordinator_proto_msgTypes[17]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use GetUserKeyRequest.ProtoReflect.Descriptor instead.
+func (*GetUserKeyRequest) Descriptor() ([]byte, []int) {
+	return file_coordinator_proto_rawDescGZIP(), []int{17}
+}
+
+func (x *GetUserKeyRequest) GetUsername() string {
+	if x != nil {
+		return x.Username
+	}
+	return ""
+}
+
+type GetUserKeyResponse struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	PublicKey     []byte                 `protobuf:"bytes,1,opt,name=public_key,json=publicKey,proto3" json:"public_key,omitempty"` // clé publique Ed25519 ; son empreinte est affichée au propriétaire
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *GetUserKeyResponse) Reset() {
+	*x = GetUserKeyResponse{}
+	mi := &file_coordinator_proto_msgTypes[18]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *GetUserKeyResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*GetUserKeyResponse) ProtoMessage() {}
+
+func (x *GetUserKeyResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_coordinator_proto_msgTypes[18]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use GetUserKeyResponse.ProtoReflect.Descriptor instead.
+func (*GetUserKeyResponse) Descriptor() ([]byte, []int) {
+	return file_coordinator_proto_rawDescGZIP(), []int{18}
+}
+
+func (x *GetUserKeyResponse) GetPublicKey() []byte {
+	if x != nil {
+		return x.PublicKey
+	}
+	return nil
+}
+
+type ShareFileRequest struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Grantee       string                 `protobuf:"bytes,1,opt,name=grantee,proto3" json:"grantee,omitempty"`                                  // nom d'utilisateur du destinataire
+	Grant         *Grant                 `protobuf:"bytes,2,opt,name=grant,proto3" json:"grant,omitempty"`                                      // signée par le propriétaire
+	EncryptedName []byte                 `protobuf:"bytes,3,opt,name=encrypted_name,json=encryptedName,proto3" json:"encrypted_name,omitempty"` // nom du fichier chiffré pour le destinataire
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *ShareFileRequest) Reset() {
+	*x = ShareFileRequest{}
+	mi := &file_coordinator_proto_msgTypes[19]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *ShareFileRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*ShareFileRequest) ProtoMessage() {}
+
+func (x *ShareFileRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_coordinator_proto_msgTypes[19]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use ShareFileRequest.ProtoReflect.Descriptor instead.
+func (*ShareFileRequest) Descriptor() ([]byte, []int) {
+	return file_coordinator_proto_rawDescGZIP(), []int{19}
+}
+
+func (x *ShareFileRequest) GetGrantee() string {
+	if x != nil {
+		return x.Grantee
+	}
+	return ""
+}
+
+func (x *ShareFileRequest) GetGrant() *Grant {
+	if x != nil {
+		return x.Grant
+	}
+	return nil
+}
+
+func (x *ShareFileRequest) GetEncryptedName() []byte {
+	if x != nil {
+		return x.EncryptedName
+	}
+	return nil
+}
+
+type ShareFileResponse struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *ShareFileResponse) Reset() {
+	*x = ShareFileResponse{}
+	mi := &file_coordinator_proto_msgTypes[20]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *ShareFileResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*ShareFileResponse) ProtoMessage() {}
+
+func (x *ShareFileResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_coordinator_proto_msgTypes[20]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use ShareFileResponse.ProtoReflect.Descriptor instead.
+func (*ShareFileResponse) Descriptor() ([]byte, []int) {
+	return file_coordinator_proto_rawDescGZIP(), []int{20}
+}
+
+type RevokeShareRequest struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	FileId        string                 `protobuf:"bytes,1,opt,name=file_id,json=fileId,proto3" json:"file_id,omitempty"`
+	Grantee       string                 `protobuf:"bytes,2,opt,name=grantee,proto3" json:"grantee,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *RevokeShareRequest) Reset() {
+	*x = RevokeShareRequest{}
+	mi := &file_coordinator_proto_msgTypes[21]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *RevokeShareRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*RevokeShareRequest) ProtoMessage() {}
+
+func (x *RevokeShareRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_coordinator_proto_msgTypes[21]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use RevokeShareRequest.ProtoReflect.Descriptor instead.
+func (*RevokeShareRequest) Descriptor() ([]byte, []int) {
+	return file_coordinator_proto_rawDescGZIP(), []int{21}
+}
+
+func (x *RevokeShareRequest) GetFileId() string {
+	if x != nil {
+		return x.FileId
+	}
+	return ""
+}
+
+func (x *RevokeShareRequest) GetGrantee() string {
+	if x != nil {
+		return x.Grantee
+	}
+	return ""
+}
+
+type RevokeShareResponse struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *RevokeShareResponse) Reset() {
+	*x = RevokeShareResponse{}
+	mi := &file_coordinator_proto_msgTypes[22]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *RevokeShareResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*RevokeShareResponse) ProtoMessage() {}
+
+func (x *RevokeShareResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_coordinator_proto_msgTypes[22]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use RevokeShareResponse.ProtoReflect.Descriptor instead.
+func (*RevokeShareResponse) Descriptor() ([]byte, []int) {
+	return file_coordinator_proto_rawDescGZIP(), []int{22}
+}
+
 var File_coordinator_proto protoreflect.FileDescriptor
 
 const file_coordinator_proto_rawDesc = "" +
 	"\n" +
-	"\x11coordinator.proto\x12\tsafevault\"j\n" +
+	"\x11coordinator.proto\x12\tsafevault\x1a\n" +
+	"node.proto\"j\n" +
 	"\x0fRegisterRequest\x12\x1a\n" +
 	"\busername\x18\x01 \x01(\tR\busername\x12\x1d\n" +
 	"\n" +
@@ -932,9 +1233,9 @@ const file_coordinator_proto_rawDesc = "" +
 	"blockCount\x12!\n" +
 	"\fblock_hashes\x18\x02 \x03(\fR\vblockHashes\x12!\n" +
 	"\fnonce_prefix\x18\x03 \x01(\fR\vnoncePrefix\x12\x12\n" +
-	"\x04size\x18\x04 \x01(\x04R\x04size\";\n" +
-	"\x11CreateFileRequest\x12\x12\n" +
-	"\x04name\x18\x01 \x01(\tR\x04name\x12\x12\n" +
+	"\x04size\x18\x04 \x01(\x04R\x04size\"N\n" +
+	"\x11CreateFileRequest\x12%\n" +
+	"\x0eencrypted_name\x18\x01 \x01(\fR\rencryptedName\x12\x12\n" +
 	"\x04size\x18\x02 \x01(\x04R\x04size\"\x8a\x01\n" +
 	"\x12CreateFileResponse\x12\x17\n" +
 	"\afile_id\x18\x01 \x01(\tR\x06fileId\x12\x14\n" +
@@ -946,20 +1247,37 @@ const file_coordinator_proto_rawDesc = "" +
 	"\afile_id\x18\x01 \x01(\tR\x06fileId\x12/\n" +
 	"\bmanifest\x18\x02 \x01(\v2\x13.safevault.ManifestR\bmanifest\"\x17\n" +
 	"\x15ConfirmUploadResponse\"\x12\n" +
-	"\x10ListFilesRequest\"K\n" +
+	"\x10ListFilesRequest\"\x8c\x01\n" +
 	"\bFileInfo\x12\x17\n" +
-	"\afile_id\x18\x01 \x01(\tR\x06fileId\x12\x12\n" +
-	"\x04name\x18\x02 \x01(\tR\x04name\x12\x12\n" +
-	"\x04size\x18\x03 \x01(\x04R\x04size\">\n" +
+	"\afile_id\x18\x01 \x01(\tR\x06fileId\x12%\n" +
+	"\x0eencrypted_name\x18\x02 \x01(\fR\rencryptedName\x12\x12\n" +
+	"\x04size\x18\x03 \x01(\x04R\x04size\x12\x14\n" +
+	"\x05owner\x18\x04 \x01(\tR\x05owner\x12\x16\n" +
+	"\x06shared\x18\x05 \x01(\bR\x06shared\">\n" +
 	"\x11ListFilesResponse\x12)\n" +
 	"\x05files\x18\x01 \x03(\v2\x13.safevault.FileInfoR\x05files\")\n" +
 	"\x0eGetFileRequest\x12\x17\n" +
-	"\afile_id\x18\x01 \x01(\tR\x06fileId\"\x91\x01\n" +
+	"\afile_id\x18\x01 \x01(\tR\x06fileId\"\xb9\x01\n" +
 	"\x0fGetFileResponse\x12\x14\n" +
 	"\x05epoch\x18\x01 \x01(\x04R\x05epoch\x12\f\n" +
 	"\x01t\x18\x02 \x01(\rR\x01t\x12/\n" +
 	"\bmanifest\x18\x03 \x01(\v2\x13.safevault.ManifestR\bmanifest\x12)\n" +
-	"\x05nodes\x18\x04 \x03(\v2\x13.safevault.NodeInfoR\x05nodes2\x88\x04\n" +
+	"\x05nodes\x18\x04 \x03(\v2\x13.safevault.NodeInfoR\x05nodes\x12&\n" +
+	"\x05grant\x18\x05 \x01(\v2\x10.safevault.GrantR\x05grant\"/\n" +
+	"\x11GetUserKeyRequest\x12\x1a\n" +
+	"\busername\x18\x01 \x01(\tR\busername\"3\n" +
+	"\x12GetUserKeyResponse\x12\x1d\n" +
+	"\n" +
+	"public_key\x18\x01 \x01(\fR\tpublicKey\"{\n" +
+	"\x10ShareFileRequest\x12\x18\n" +
+	"\agrantee\x18\x01 \x01(\tR\agrantee\x12&\n" +
+	"\x05grant\x18\x02 \x01(\v2\x10.safevault.GrantR\x05grant\x12%\n" +
+	"\x0eencrypted_name\x18\x03 \x01(\fR\rencryptedName\"\x13\n" +
+	"\x11ShareFileResponse\"G\n" +
+	"\x12RevokeShareRequest\x12\x17\n" +
+	"\afile_id\x18\x01 \x01(\tR\x06fileId\x12\x18\n" +
+	"\agrantee\x18\x02 \x01(\tR\agrantee\"\x15\n" +
+	"\x13RevokeShareResponse2\xe9\x05\n" +
 	"\vCoordinator\x12C\n" +
 	"\bRegister\x12\x1a.safevault.RegisterRequest\x1a\x1b.safevault.RegisterResponse\x12O\n" +
 	"\fGetChallenge\x12\x1e.safevault.GetChallengeRequest\x1a\x1f.safevault.GetChallengeResponse\x12:\n" +
@@ -968,7 +1286,11 @@ const file_coordinator_proto_rawDesc = "" +
 	"CreateFile\x12\x1c.safevault.CreateFileRequest\x1a\x1d.safevault.CreateFileResponse\x12R\n" +
 	"\rConfirmUpload\x12\x1f.safevault.ConfirmUploadRequest\x1a .safevault.ConfirmUploadResponse\x12F\n" +
 	"\tListFiles\x12\x1b.safevault.ListFilesRequest\x1a\x1c.safevault.ListFilesResponse\x12@\n" +
-	"\aGetFile\x12\x19.safevault.GetFileRequest\x1a\x1a.safevault.GetFileResponseB\x14Z\x12safevault/proto;pbb\x06proto3"
+	"\aGetFile\x12\x19.safevault.GetFileRequest\x1a\x1a.safevault.GetFileResponse\x12I\n" +
+	"\n" +
+	"GetUserKey\x12\x1c.safevault.GetUserKeyRequest\x1a\x1d.safevault.GetUserKeyResponse\x12F\n" +
+	"\tShareFile\x12\x1b.safevault.ShareFileRequest\x1a\x1c.safevault.ShareFileResponse\x12L\n" +
+	"\vRevokeShare\x12\x1d.safevault.RevokeShareRequest\x1a\x1e.safevault.RevokeShareResponseB\x14Z\x12safevault/proto;pbb\x06proto3"
 
 var (
 	file_coordinator_proto_rawDescOnce sync.Once
@@ -982,7 +1304,7 @@ func file_coordinator_proto_rawDescGZIP() []byte {
 	return file_coordinator_proto_rawDescData
 }
 
-var file_coordinator_proto_msgTypes = make([]protoimpl.MessageInfo, 17)
+var file_coordinator_proto_msgTypes = make([]protoimpl.MessageInfo, 23)
 var file_coordinator_proto_goTypes = []any{
 	(*RegisterRequest)(nil),       // 0: safevault.RegisterRequest
 	(*RegisterResponse)(nil),      // 1: safevault.RegisterResponse
@@ -1001,6 +1323,13 @@ var file_coordinator_proto_goTypes = []any{
 	(*ListFilesResponse)(nil),     // 14: safevault.ListFilesResponse
 	(*GetFileRequest)(nil),        // 15: safevault.GetFileRequest
 	(*GetFileResponse)(nil),       // 16: safevault.GetFileResponse
+	(*GetUserKeyRequest)(nil),     // 17: safevault.GetUserKeyRequest
+	(*GetUserKeyResponse)(nil),    // 18: safevault.GetUserKeyResponse
+	(*ShareFileRequest)(nil),      // 19: safevault.ShareFileRequest
+	(*ShareFileResponse)(nil),     // 20: safevault.ShareFileResponse
+	(*RevokeShareRequest)(nil),    // 21: safevault.RevokeShareRequest
+	(*RevokeShareResponse)(nil),   // 22: safevault.RevokeShareResponse
+	(*Grant)(nil),                 // 23: safevault.Grant
 }
 var file_coordinator_proto_depIdxs = []int32{
 	6,  // 0: safevault.CreateFileResponse.nodes:type_name -> safevault.NodeInfo
@@ -1008,25 +1337,33 @@ var file_coordinator_proto_depIdxs = []int32{
 	13, // 2: safevault.ListFilesResponse.files:type_name -> safevault.FileInfo
 	7,  // 3: safevault.GetFileResponse.manifest:type_name -> safevault.Manifest
 	6,  // 4: safevault.GetFileResponse.nodes:type_name -> safevault.NodeInfo
-	0,  // 5: safevault.Coordinator.Register:input_type -> safevault.RegisterRequest
-	2,  // 6: safevault.Coordinator.GetChallenge:input_type -> safevault.GetChallengeRequest
-	4,  // 7: safevault.Coordinator.Login:input_type -> safevault.LoginRequest
-	8,  // 8: safevault.Coordinator.CreateFile:input_type -> safevault.CreateFileRequest
-	10, // 9: safevault.Coordinator.ConfirmUpload:input_type -> safevault.ConfirmUploadRequest
-	12, // 10: safevault.Coordinator.ListFiles:input_type -> safevault.ListFilesRequest
-	15, // 11: safevault.Coordinator.GetFile:input_type -> safevault.GetFileRequest
-	1,  // 12: safevault.Coordinator.Register:output_type -> safevault.RegisterResponse
-	3,  // 13: safevault.Coordinator.GetChallenge:output_type -> safevault.GetChallengeResponse
-	5,  // 14: safevault.Coordinator.Login:output_type -> safevault.LoginResponse
-	9,  // 15: safevault.Coordinator.CreateFile:output_type -> safevault.CreateFileResponse
-	11, // 16: safevault.Coordinator.ConfirmUpload:output_type -> safevault.ConfirmUploadResponse
-	14, // 17: safevault.Coordinator.ListFiles:output_type -> safevault.ListFilesResponse
-	16, // 18: safevault.Coordinator.GetFile:output_type -> safevault.GetFileResponse
-	12, // [12:19] is the sub-list for method output_type
-	5,  // [5:12] is the sub-list for method input_type
-	5,  // [5:5] is the sub-list for extension type_name
-	5,  // [5:5] is the sub-list for extension extendee
-	0,  // [0:5] is the sub-list for field type_name
+	23, // 5: safevault.GetFileResponse.grant:type_name -> safevault.Grant
+	23, // 6: safevault.ShareFileRequest.grant:type_name -> safevault.Grant
+	0,  // 7: safevault.Coordinator.Register:input_type -> safevault.RegisterRequest
+	2,  // 8: safevault.Coordinator.GetChallenge:input_type -> safevault.GetChallengeRequest
+	4,  // 9: safevault.Coordinator.Login:input_type -> safevault.LoginRequest
+	8,  // 10: safevault.Coordinator.CreateFile:input_type -> safevault.CreateFileRequest
+	10, // 11: safevault.Coordinator.ConfirmUpload:input_type -> safevault.ConfirmUploadRequest
+	12, // 12: safevault.Coordinator.ListFiles:input_type -> safevault.ListFilesRequest
+	15, // 13: safevault.Coordinator.GetFile:input_type -> safevault.GetFileRequest
+	17, // 14: safevault.Coordinator.GetUserKey:input_type -> safevault.GetUserKeyRequest
+	19, // 15: safevault.Coordinator.ShareFile:input_type -> safevault.ShareFileRequest
+	21, // 16: safevault.Coordinator.RevokeShare:input_type -> safevault.RevokeShareRequest
+	1,  // 17: safevault.Coordinator.Register:output_type -> safevault.RegisterResponse
+	3,  // 18: safevault.Coordinator.GetChallenge:output_type -> safevault.GetChallengeResponse
+	5,  // 19: safevault.Coordinator.Login:output_type -> safevault.LoginResponse
+	9,  // 20: safevault.Coordinator.CreateFile:output_type -> safevault.CreateFileResponse
+	11, // 21: safevault.Coordinator.ConfirmUpload:output_type -> safevault.ConfirmUploadResponse
+	14, // 22: safevault.Coordinator.ListFiles:output_type -> safevault.ListFilesResponse
+	16, // 23: safevault.Coordinator.GetFile:output_type -> safevault.GetFileResponse
+	18, // 24: safevault.Coordinator.GetUserKey:output_type -> safevault.GetUserKeyResponse
+	20, // 25: safevault.Coordinator.ShareFile:output_type -> safevault.ShareFileResponse
+	22, // 26: safevault.Coordinator.RevokeShare:output_type -> safevault.RevokeShareResponse
+	17, // [17:27] is the sub-list for method output_type
+	7,  // [7:17] is the sub-list for method input_type
+	7,  // [7:7] is the sub-list for extension type_name
+	7,  // [7:7] is the sub-list for extension extendee
+	0,  // [0:7] is the sub-list for field type_name
 }
 
 func init() { file_coordinator_proto_init() }
@@ -1034,13 +1371,14 @@ func file_coordinator_proto_init() {
 	if File_coordinator_proto != nil {
 		return
 	}
+	file_node_proto_init()
 	type x struct{}
 	out := protoimpl.TypeBuilder{
 		File: protoimpl.DescBuilder{
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_coordinator_proto_rawDesc), len(file_coordinator_proto_rawDesc)),
 			NumEnums:      0,
-			NumMessages:   17,
+			NumMessages:   23,
 			NumExtensions: 0,
 			NumServices:   1,
 		},

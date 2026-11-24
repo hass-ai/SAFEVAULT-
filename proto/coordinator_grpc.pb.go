@@ -28,6 +28,9 @@ const (
 	Coordinator_ConfirmUpload_FullMethodName = "/safevault.Coordinator/ConfirmUpload"
 	Coordinator_ListFiles_FullMethodName     = "/safevault.Coordinator/ListFiles"
 	Coordinator_GetFile_FullMethodName       = "/safevault.Coordinator/GetFile"
+	Coordinator_GetUserKey_FullMethodName    = "/safevault.Coordinator/GetUserKey"
+	Coordinator_ShareFile_FullMethodName     = "/safevault.Coordinator/ShareFile"
+	Coordinator_RevokeShare_FullMethodName   = "/safevault.Coordinator/RevokeShare"
 )
 
 // CoordinatorClient is the client API for Coordinator service.
@@ -46,8 +49,14 @@ type CoordinatorClient interface {
 	ConfirmUpload(ctx context.Context, in *ConfirmUploadRequest, opts ...grpc.CallOption) (*ConfirmUploadResponse, error)
 	// Liste les fichiers accessibles à l'utilisateur connecté.
 	ListFiles(ctx context.Context, in *ListFilesRequest, opts ...grpc.CallOption) (*ListFilesResponse, error)
-	// Donne les informations nécessaires pour relire un fichier.
+	// Donne les informations nécessaires pour relire un fichier (propriétaire ou destinataire).
 	GetFile(ctx context.Context, in *GetFileRequest, opts ...grpc.CallOption) (*GetFileResponse, error)
+	// Renvoie la clé publique d'un utilisateur, pour lui partager un fichier.
+	GetUserKey(ctx context.Context, in *GetUserKeyRequest, opts ...grpc.CallOption) (*GetUserKeyResponse, error)
+	// Enregistre un partage : le propriétaire fournit l'autorisation signée.
+	ShareFile(ctx context.Context, in *ShareFileRequest, opts ...grpc.CallOption) (*ShareFileResponse, error)
+	// Retire un partage côté coordinateur (la révocation signée part aussi vers les nœuds).
+	RevokeShare(ctx context.Context, in *RevokeShareRequest, opts ...grpc.CallOption) (*RevokeShareResponse, error)
 }
 
 type coordinatorClient struct {
@@ -128,6 +137,36 @@ func (c *coordinatorClient) GetFile(ctx context.Context, in *GetFileRequest, opt
 	return out, nil
 }
 
+func (c *coordinatorClient) GetUserKey(ctx context.Context, in *GetUserKeyRequest, opts ...grpc.CallOption) (*GetUserKeyResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(GetUserKeyResponse)
+	err := c.cc.Invoke(ctx, Coordinator_GetUserKey_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *coordinatorClient) ShareFile(ctx context.Context, in *ShareFileRequest, opts ...grpc.CallOption) (*ShareFileResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(ShareFileResponse)
+	err := c.cc.Invoke(ctx, Coordinator_ShareFile_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *coordinatorClient) RevokeShare(ctx context.Context, in *RevokeShareRequest, opts ...grpc.CallOption) (*RevokeShareResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(RevokeShareResponse)
+	err := c.cc.Invoke(ctx, Coordinator_RevokeShare_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 // CoordinatorServer is the server API for Coordinator service.
 // All implementations must embed UnimplementedCoordinatorServer
 // for forward compatibility.
@@ -144,8 +183,14 @@ type CoordinatorServer interface {
 	ConfirmUpload(context.Context, *ConfirmUploadRequest) (*ConfirmUploadResponse, error)
 	// Liste les fichiers accessibles à l'utilisateur connecté.
 	ListFiles(context.Context, *ListFilesRequest) (*ListFilesResponse, error)
-	// Donne les informations nécessaires pour relire un fichier.
+	// Donne les informations nécessaires pour relire un fichier (propriétaire ou destinataire).
 	GetFile(context.Context, *GetFileRequest) (*GetFileResponse, error)
+	// Renvoie la clé publique d'un utilisateur, pour lui partager un fichier.
+	GetUserKey(context.Context, *GetUserKeyRequest) (*GetUserKeyResponse, error)
+	// Enregistre un partage : le propriétaire fournit l'autorisation signée.
+	ShareFile(context.Context, *ShareFileRequest) (*ShareFileResponse, error)
+	// Retire un partage côté coordinateur (la révocation signée part aussi vers les nœuds).
+	RevokeShare(context.Context, *RevokeShareRequest) (*RevokeShareResponse, error)
 	mustEmbedUnimplementedCoordinatorServer()
 }
 
@@ -176,6 +221,15 @@ func (UnimplementedCoordinatorServer) ListFiles(context.Context, *ListFilesReque
 }
 func (UnimplementedCoordinatorServer) GetFile(context.Context, *GetFileRequest) (*GetFileResponse, error) {
 	return nil, status.Error(codes.Unimplemented, "method GetFile not implemented")
+}
+func (UnimplementedCoordinatorServer) GetUserKey(context.Context, *GetUserKeyRequest) (*GetUserKeyResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method GetUserKey not implemented")
+}
+func (UnimplementedCoordinatorServer) ShareFile(context.Context, *ShareFileRequest) (*ShareFileResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method ShareFile not implemented")
+}
+func (UnimplementedCoordinatorServer) RevokeShare(context.Context, *RevokeShareRequest) (*RevokeShareResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method RevokeShare not implemented")
 }
 func (UnimplementedCoordinatorServer) mustEmbedUnimplementedCoordinatorServer() {}
 func (UnimplementedCoordinatorServer) testEmbeddedByValue()                     {}
@@ -324,6 +378,60 @@ func _Coordinator_GetFile_Handler(srv interface{}, ctx context.Context, dec func
 	return interceptor(ctx, in, info, handler)
 }
 
+func _Coordinator_GetUserKey_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(GetUserKeyRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(CoordinatorServer).GetUserKey(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: Coordinator_GetUserKey_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(CoordinatorServer).GetUserKey(ctx, req.(*GetUserKeyRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _Coordinator_ShareFile_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(ShareFileRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(CoordinatorServer).ShareFile(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: Coordinator_ShareFile_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(CoordinatorServer).ShareFile(ctx, req.(*ShareFileRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _Coordinator_RevokeShare_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(RevokeShareRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(CoordinatorServer).RevokeShare(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: Coordinator_RevokeShare_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(CoordinatorServer).RevokeShare(ctx, req.(*RevokeShareRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
 // Coordinator_ServiceDesc is the grpc.ServiceDesc for Coordinator service.
 // It's only intended for direct use with grpc.RegisterService,
 // and not to be introspected or modified (even as a copy)
@@ -358,6 +466,18 @@ var Coordinator_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "GetFile",
 			Handler:    _Coordinator_GetFile_Handler,
+		},
+		{
+			MethodName: "GetUserKey",
+			Handler:    _Coordinator_GetUserKey_Handler,
+		},
+		{
+			MethodName: "ShareFile",
+			Handler:    _Coordinator_ShareFile_Handler,
+		},
+		{
+			MethodName: "RevokeShare",
+			Handler:    _Coordinator_RevokeShare_Handler,
 		},
 	},
 	Streams:  []grpc.StreamDesc{},

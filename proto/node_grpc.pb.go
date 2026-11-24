@@ -26,6 +26,7 @@ const (
 	Node_GetShare_FullMethodName  = "/safevault.Node/GetShare"
 	Node_PutBlocks_FullMethodName = "/safevault.Node/PutBlocks"
 	Node_GetBlocks_FullMethodName = "/safevault.Node/GetBlocks"
+	Node_Revoke_FullMethodName    = "/safevault.Node/Revoke"
 )
 
 // NodeClient is the client API for Node service.
@@ -40,6 +41,8 @@ type NodeClient interface {
 	PutBlocks(ctx context.Context, opts ...grpc.CallOption) (grpc.ClientStreamingClient[Block, PutBlocksResponse], error)
 	// Renvoie les blocs chiffrés d'un fichier en flux.
 	GetBlocks(ctx context.Context, in *GetBlocksRequest, opts ...grpc.CallOption) (grpc.ServerStreamingClient[Block], error)
+	// Enregistre le retrait d'un accès, signé par le propriétaire du fichier.
+	Revoke(ctx context.Context, in *RevokeRequest, opts ...grpc.CallOption) (*RevokeResponse, error)
 }
 
 type nodeClient struct {
@@ -102,6 +105,16 @@ func (c *nodeClient) GetBlocks(ctx context.Context, in *GetBlocksRequest, opts .
 // This type alias is provided for backwards compatibility with existing code that references the prior non-generic stream type by name.
 type Node_GetBlocksClient = grpc.ServerStreamingClient[Block]
 
+func (c *nodeClient) Revoke(ctx context.Context, in *RevokeRequest, opts ...grpc.CallOption) (*RevokeResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(RevokeResponse)
+	err := c.cc.Invoke(ctx, Node_Revoke_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 // NodeServer is the server API for Node service.
 // All implementations must embed UnimplementedNodeServer
 // for forward compatibility.
@@ -114,6 +127,8 @@ type NodeServer interface {
 	PutBlocks(grpc.ClientStreamingServer[Block, PutBlocksResponse]) error
 	// Renvoie les blocs chiffrés d'un fichier en flux.
 	GetBlocks(*GetBlocksRequest, grpc.ServerStreamingServer[Block]) error
+	// Enregistre le retrait d'un accès, signé par le propriétaire du fichier.
+	Revoke(context.Context, *RevokeRequest) (*RevokeResponse, error)
 	mustEmbedUnimplementedNodeServer()
 }
 
@@ -135,6 +150,9 @@ func (UnimplementedNodeServer) PutBlocks(grpc.ClientStreamingServer[Block, PutBl
 }
 func (UnimplementedNodeServer) GetBlocks(*GetBlocksRequest, grpc.ServerStreamingServer[Block]) error {
 	return status.Error(codes.Unimplemented, "method GetBlocks not implemented")
+}
+func (UnimplementedNodeServer) Revoke(context.Context, *RevokeRequest) (*RevokeResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method Revoke not implemented")
 }
 func (UnimplementedNodeServer) mustEmbedUnimplementedNodeServer() {}
 func (UnimplementedNodeServer) testEmbeddedByValue()              {}
@@ -211,6 +229,24 @@ func _Node_GetBlocks_Handler(srv interface{}, stream grpc.ServerStream) error {
 // This type alias is provided for backwards compatibility with existing code that references the prior non-generic stream type by name.
 type Node_GetBlocksServer = grpc.ServerStreamingServer[Block]
 
+func _Node_Revoke_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(RevokeRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(NodeServer).Revoke(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: Node_Revoke_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(NodeServer).Revoke(ctx, req.(*RevokeRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
 // Node_ServiceDesc is the grpc.ServiceDesc for Node service.
 // It's only intended for direct use with grpc.RegisterService,
 // and not to be introspected or modified (even as a copy)
@@ -225,6 +261,10 @@ var Node_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "GetShare",
 			Handler:    _Node_GetShare_Handler,
+		},
+		{
+			MethodName: "Revoke",
+			Handler:    _Node_Revoke_Handler,
 		},
 	},
 	Streams: []grpc.StreamDesc{

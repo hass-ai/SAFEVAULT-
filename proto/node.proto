@@ -38,10 +38,34 @@ message PutShareRequest {
 
 message PutShareResponse {}
 
+// Autorisation de lecture d'un fichier, signée par son propriétaire (Ed25519).
+// Les nœuds la vérifient avec la clé du propriétaire qu'ils ont enregistrée au dépôt :
+// le coordinateur la transmet mais ne peut pas la fabriquer.
+// Données signées : voir internal/access.
+message Grant {
+  string file_id = 1;
+  bytes owner_public_key = 2;
+  bytes grantee_public_key = 3;
+  int64 issued_at = 4;  // secondes Unix
+  int64 expires_at = 5; // secondes Unix
+  bytes signature = 6;
+}
+
+// Retrait d'un accès, signé par le propriétaire : les autorisations émises avant
+// revoked_at pour ce destinataire ne sont plus acceptées.
+message Revocation {
+  string file_id = 1;
+  bytes owner_public_key = 2;
+  bytes grantee_public_key = 3;
+  int64 revoked_at = 4; // secondes Unix
+  bytes signature = 5;
+}
+
 message GetShareRequest {
   string file_id = 1;
   uint64 epoch = 2; // époque attendue par le client
   Proof proof = 3;
+  Grant grant = 4;  // absent pour le propriétaire
 }
 
 message GetShareResponse {
@@ -55,7 +79,14 @@ message PutBlocksResponse {
 message GetBlocksRequest {
   string file_id = 1;
   Proof proof = 2;
+  Grant grant = 3;  // absent pour le propriétaire
 }
+
+message RevokeRequest {
+  Revocation revocation = 1;
+}
+
+message RevokeResponse {}
 
 service Node {
   // Dépose la part de la clé du fichier sur le nœud.
@@ -66,6 +97,8 @@ service Node {
   rpc PutBlocks(stream Block) returns (PutBlocksResponse);
   // Renvoie les blocs chiffrés d'un fichier en flux.
   rpc GetBlocks(GetBlocksRequest) returns (stream Block);
+  // Enregistre le retrait d'un accès, signé par le propriétaire du fichier.
+  rpc Revoke(RevokeRequest) returns (RevokeResponse);
 }
 
 // Sous-part d'un fichier envoyée pendant un renouvellement.
