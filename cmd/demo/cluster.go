@@ -16,6 +16,8 @@ import (
 	"syscall"
 	"time"
 
+	"safevault/internal/storage"
+
 	_ "modernc.org/sqlite"
 )
 
@@ -322,6 +324,9 @@ func (c *cluster) readShares(x int) ([]nodeShare, error) {
 		if err := rows.Scan(&s.FileID, &s.X, &s.Epoch, &s.Value); err != nil {
 			return nil, err
 		}
+		// La démo ne dépose qu'une version : la clé de stockage <fichier>_v1 redevient
+		// l'identifiant du fichier.
+		s.FileID = strings.TrimSuffix(s.FileID, "_v1")
 		shares = append(shares, s)
 	}
 	return shares, rows.Err()
@@ -329,7 +334,7 @@ func (c *cluster) readShares(x int) ([]nodeShare, error) {
 
 // readBlock lit le bloc index du fichier sur le disque du nœud x.
 func (c *cluster) readBlock(x int, fileID string, index int) ([]byte, error) {
-	return os.ReadFile(filepath.Join(c.nodes[x-1].data, "blocks", fileID, fmt.Sprint(index)))
+	return os.ReadFile(filepath.Join(c.nodes[x-1].data, "blocks", storage.VersionKey(fileID, 1), fmt.Sprint(index)))
 }
 
 // fingerprint résume une part en quelques caractères pour l'affichage.

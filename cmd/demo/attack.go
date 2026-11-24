@@ -71,11 +71,12 @@ func tryDecrypt(stolen []stolenShare, t int, fileID string, block []byte) attack
 }
 
 func decryptFirstBlock(secret *edwards25519.Scalar, fileID string, block []byte) ([]byte, bool) {
-	key, err := crypto.DeriveFileKey(secret.Bytes(), []byte(fileID))
+	label := crypto.VersionContext(fileID, 1)
+	key, err := crypto.DeriveFileKey(secret.Bytes(), label)
 	if err != nil {
 		return nil, false
 	}
-	fc, err := crypto.NewFileCipher(key, []byte(fileID))
+	fc, err := crypto.NewFileCipher(key, label)
 	if err != nil {
 		return nil, false
 	}

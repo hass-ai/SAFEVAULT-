@@ -115,8 +115,9 @@ func (c *cluster) forgedGrantAttempt(fileID string, epoch uint64) ([]string, err
 	if err != nil {
 		return nil, err
 	}
-	forged := access.NewGrant(coordinatorKey, fileID, charlie.Public().(ed25519.PublicKey), time.Now(), time.Hour)
-	forged.OwnerPublicKey = alicePub // il prétend que l'autorisation vient d'alice
+	now := time.Now()
+	forged := access.NewGrant(coordinatorKey, fileID, charlie.Public().(ed25519.PublicKey), access.Read, now, now.Add(time.Hour), nil)
+	forged.IssuerPublicKey = alicePub // il prétend que l'autorisation vient d'alice
 
 	caPEM, err := os.ReadFile(filepath.Join(c.dir, "certs", "ca.crt"))
 	if err != nil {

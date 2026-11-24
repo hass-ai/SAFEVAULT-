@@ -273,7 +273,16 @@ func (a *app) upload() {
 		a.logf("err", "Dépôt refusé : %s", lastLine(out))
 		return
 	}
-	fileID := strings.TrimSpace(strings.TrimPrefix(lastLine(out), "Fichier déposé :"))
+	fileID := ""
+	for _, line := range strings.Split(out, "\n") {
+		if id, ok := strings.CutPrefix(strings.TrimSpace(line), "identifiant :"); ok {
+			fileID = strings.TrimSpace(id)
+		}
+	}
+	if fileID == "" {
+		a.logf("err", "Identifiant du fichier introuvable dans la sortie du client : %s", lastLine(out))
+		return
+	}
 	a.mu.Lock()
 	a.fileID, a.original = fileID, data
 	a.stolen, a.outcome, a.compromised = nil, nil, map[int]uint64{}
@@ -333,11 +342,13 @@ func (a *app) share() {
 		return
 	}
 	for _, line := range strings.Split(out, "\n") {
-		if strings.HasPrefix(line, "Empreinte") {
+		switch {
+		case strings.Contains(line, "empreinte de la clé"):
 			a.logf("info", "%s", line)
+		case strings.HasPrefix(line, "✓ "):
+			a.logf("ok", "%s", strings.TrimPrefix(line, "✓ "))
 		}
 	}
-	a.logf("ok", "%s", lastLine(out))
 }
 
 func (a *app) downloadAs(user string) {
@@ -406,7 +417,7 @@ func (a *app) revoke() {
 	}
 	for _, line := range strings.Split(out, "\n") {
 		if line != "" {
-			a.logf("ok", "%s", line)
+			a.logf("ok", "%s", strings.TrimPrefix(strings.TrimPrefix(line, "✓ "), "! "))
 		}
 	}
 }

@@ -13,11 +13,12 @@ import (
 // sealedFile chiffre un petit fichier comme le client et renvoie son premier bloc.
 func sealedFile(t *testing.T, secret *edwards25519.Scalar, fileID string, content string) []byte {
 	t.Helper()
-	key, err := crypto.DeriveFileKey(secret.Bytes(), []byte(fileID))
+	label := crypto.VersionContext(fileID, 1) // la démo ne dépose qu'une version
+	key, err := crypto.DeriveFileKey(secret.Bytes(), label)
 	if err != nil {
 		t.Fatal(err)
 	}
-	fc, err := crypto.NewFileCipher(key, []byte(fileID))
+	fc, err := crypto.NewFileCipher(key, label)
 	if err != nil {
 		t.Fatal(err)
 	}
