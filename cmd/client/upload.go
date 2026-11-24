@@ -42,9 +42,21 @@ func runUpload(cfg Config, path string) error {
 		return err
 	}
 
+	// Métadonnées : le coordinateur ne reçoit qu'un nom chiffré et une taille arrondie.
+	namesKey, err := crypto.NamesKey(privateKey)
+	if err != nil {
+		return err
+	}
+	encryptedName, err := crypto.SealName(namesKey, filepath.Base(path))
+	clear(namesKey)
+	if err != nil {
+		return err
+	}
+	padded := crypto.Pad(data)
+
 	file, err := coordinator.CreateFile(authCtx, &pb.CreateFileRequest{
-		Name: filepath.Base(path),
-		Size: uint64(len(data)),
+		EncryptedName: encryptedName,
+		Size:          uint64(len(padded)),
 	})
 	if err != nil {
 		return fmt.Errorf("CreateFile : %w", err)
@@ -69,7 +81,7 @@ func runUpload(cfg Config, path string) error {
 	if err != nil {
 		return err
 	}
-	blocks, err := fileCipher.EncryptBlocks(bytes.NewReader(data), crypto.DefaultBlockSize)
+	blocks, err := fileCipher.EncryptBlocks(bytes.NewReader(padded), crypto.DefaultBlockSize)
 	if err != nil {
 		return err
 	}
@@ -108,7 +120,7 @@ func runUpload(cfg Config, path string) error {
 		Manifest: &pb.Manifest{
 			BlockCount:  uint32(len(blocks)),
 			BlockHashes: hashes,
-			Size:        uint64(len(data)),
+			Size:        uint64(len(padded)),
 		},
 	})
 	if err != nil {

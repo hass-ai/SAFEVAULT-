@@ -88,18 +88,28 @@ func runDownload(cfg Config, fileID, output string) error {
 	return nil
 }
 
-// writeDecrypted déchiffre les blocs dans un fichier temporaire, puis le renomme en output :
-// en cas d'erreur, aucun fichier à moitié déchiffré n'est laissé.
+// writeDecrypted déchiffre les blocs, retire le remplissage, et écrit le résultat dans un
+// fichier temporaire renommé ensuite en output : en cas d'erreur, aucun fichier à moitié
+// déchiffré n'est laissé.
 func writeDecrypted(fileCipher *crypto.FileCipher, blocks [][]byte, output string) error {
+	var padded bytes.Buffer
+	if err := fileCipher.DecryptBlocks(blocks, &padded); err != nil {
+		return fmt.Errorf("déchiffrement impossible (part ou bloc incorrect) : %w", err)
+	}
+	data, err := crypto.Unpad(padded.Bytes())
+	if err != nil {
+		return err
+	}
+
 	tmp, err := os.CreateTemp(filepath.Dir(output), ".safevault-*")
 	if err != nil {
 		return err
 	}
 	defer os.Remove(tmp.Name()) // sans effet si le renommage a réussi
 
-	if err := fileCipher.DecryptBlocks(blocks, tmp); err != nil {
+	if _, err := tmp.Write(data); err != nil {
 		tmp.Close()
-		return fmt.Errorf("déchiffrement impossible (part ou bloc incorrect) : %w", err)
+		return err
 	}
 	if err := tmp.Close(); err != nil {
 		return err
@@ -122,7 +132,7 @@ func collectSecret(ctx context.Context, cfg Config, key ed25519.PrivateKey, file
 		if len(shares) == int(file.T) {
 			break
 		}
-		share, err := getShare(ctx, cfg, key, fileID, file.Epoch, info)
+		share, err := getShare(ctx, cfg, key, fileID, file.Epoch, info, file.Grant)
 		if status.Code(err) == codes.FailedPrecondition {
 			return nil, errEpochChanged
 		}
@@ -151,9 +161,10 @@ func collectSecret(ctx context.Context, cfg Config, key ed25519.PrivateKey, file
 	return shamir.Combine(shares, int(file.T))
 }
 
-// getShare demande à un nœud sa part de la clé pour l'époque donnée.
+// getShare demande à un nœud sa part de la clé pour l'époque donnée. grant est l'autorisation
+// du propriétaire quand le fichier est partagé avec nous (nil pour le propriétaire).
 func getShare(ctx context.Context, cfg Config, key ed25519.PrivateKey, fileID string, epoch uint64,
-	info *pb.NodeInfo) (*pb.Share, error) {
+	info *pb.NodeInfo, grant *pb.Grant) (*pb.Share, error) {
 
 	node, conn, err := connectNode(cfg, info.Address)
 	if err != nil {
@@ -168,6 +179,7 @@ func getShare(ctx context.Context, cfg Config, key ed25519.PrivateKey, fileID st
 		FileId: fileID,
 		Epoch:  epoch,
 		Proof:  proof(key, "safevault/getshare/v1", info.X, fileID, epoch),
+		Grant:  grant,
 	})
 	if err != nil {
 		return nil, err
@@ -180,7 +192,7 @@ func fetchBlocks(ctx context.Context, cfg Config, key ed25519.PrivateKey, fileID
 	file *pb.GetFileResponse) ([][]byte, error) {
 
 	for _, info := range file.Nodes {
-		blocks, err := getBlocks(ctx, cfg, key, fileID, info, file.Manifest)
+		blocks, err := getBlocks(ctx, cfg, key, fileID, info, file.Manifest, file.Grant)
 		if err == nil {
 			return blocks, nil
 		}
@@ -191,7 +203,7 @@ func fetchBlocks(ctx context.Context, cfg Config, key ed25519.PrivateKey, fileID
 
 // getBlocks récupère tous les blocs d'un nœud et vérifie chacun avec son empreinte du manifeste.
 func getBlocks(ctx context.Context, cfg Config, key ed25519.PrivateKey, fileID string,
-	info *pb.NodeInfo, manifest *pb.Manifest) ([][]byte, error) {
+	info *pb.NodeInfo, manifest *pb.Manifest, grant *pb.Grant) ([][]byte, error) {
 
 	node, conn, err := connectNode(cfg, info.Address)
 	if err != nil {
@@ -202,6 +214,7 @@ func getBlocks(ctx context.Context, cfg Config, key ed25519.PrivateKey, fileID s
 	stream, err := node.GetBlocks(ctx, &pb.GetBlocksRequest{
 		FileId: fileID,
 		Proof:  proof(key, "safevault/getblocks/v1", info.X, fileID, 0),
+		Grant:  grant,
 	})
 	if err != nil {
 		return nil, err
