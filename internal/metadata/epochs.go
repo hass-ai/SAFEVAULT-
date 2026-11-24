@@ -46,7 +46,7 @@ func (s *Store) BeginEpoch() (uint64, error) {
 
 	var busy bool
 	err = tx.QueryRow(`SELECT EXISTS (SELECT 1 FROM epochs WHERE state IN (?, ?))
-		OR EXISTS (SELECT 1 FROM files WHERE status = ?)`,
+		OR EXISTS (SELECT 1 FROM versions WHERE status = ?)`,
 		EpochPreparing, EpochCommitting, FilePending).Scan(&busy)
 	if err != nil {
 		return 0, err

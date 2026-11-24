@@ -438,7 +438,7 @@ func TestCreateConfirmAndRead(t *testing.T) {
 	}
 
 	want := newManifest(4, 100)
-	if err := s.ConfirmUpload("f1", alice, want); err != nil {
+	if err := s.ConfirmUpload("f1", 1, alice, want); err != nil {
 		t.Fatal(err)
 	}
 	f, _ = s.File("f1")
@@ -446,7 +446,7 @@ func TestCreateConfirmAndRead(t *testing.T) {
 		t.Fatalf("statut après confirmation : %s", f.Status)
 	}
 
-	got, err := s.Manifest("f1")
+	got, err := s.manifest("f1")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -526,15 +526,15 @@ func TestConfirmUploadRejects(t *testing.T) {
 		{"taille différente de CreateFile", "f1", alice, newManifest(1, 99), ErrInvalidArgument},
 	}
 	for _, c := range cases {
-		if err := s.ConfirmUpload(c.fileID, c.owner, c.m); !errors.Is(err, c.want) {
+		if err := s.ConfirmUpload(c.fileID, 1, c.owner, c.m); !errors.Is(err, c.want) {
 			t.Errorf("%s : %v, attendu %v", c.name, err, c.want)
 		}
 	}
 
-	if err := s.ConfirmUpload("f1", alice, newManifest(1, 100)); err != nil {
+	if err := s.ConfirmUpload("f1", 1, alice, newManifest(1, 100)); err != nil {
 		t.Fatal(err)
 	}
-	if err := s.ConfirmUpload("f1", alice, newManifest(1, 100)); !errors.Is(err, ErrConflict) {
+	if err := s.ConfirmUpload("f1", 1, alice, newManifest(1, 100)); !errors.Is(err, ErrConflict) {
 		t.Fatalf("deuxième confirmation : %v, attendu ErrConflict", err)
 	}
 }
@@ -554,7 +554,7 @@ func TestFilesByOwnerOnlyReadyAndOwn(t *testing.T) {
 		id    string
 		owner int64
 	}{{"a1", alice}, {"a2", alice}, {"b1", bob}} {
-		mustNil(t, s.ConfirmUpload(c.id, c.owner, newManifest(1, 1)))
+		mustNil(t, s.ConfirmUpload(c.id, 1, c.owner, newManifest(1, 1)))
 	}
 
 	files, err := s.FilesByOwner(alice)
@@ -564,7 +564,7 @@ func TestFilesByOwnerOnlyReadyAndOwn(t *testing.T) {
 	if len(files) != 2 || files[0].ID != "a1" || files[1].ID != "a2" {
 		t.Fatalf("fichiers d'alice : %+v", files)
 	}
-	if _, err := s.Manifest("a-pending"); !errors.Is(err, ErrNotFound) {
+	if _, err := s.manifest("a-pending"); !errors.Is(err, ErrNotFound) {
 		t.Fatalf("manifeste d'un fichier non confirmé : %v", err)
 	}
 }
@@ -606,7 +606,7 @@ func TestDeleteStalePending(t *testing.T) {
 	alice := newUser(t, s, "alice")
 	createFile(t, s, "vieux", alice, 1)
 	createFile(t, s, "confirme", alice, 1)
-	mustNil(t, s.ConfirmUpload("confirme", alice, newManifest(1, 1)))
+	mustNil(t, s.ConfirmUpload("confirme", 1, alice, newManifest(1, 1)))
 	clock.advance(2 * time.Hour)
 	createFile(t, s, "recent", alice, 1)
 
@@ -622,4 +622,10 @@ func TestDeleteStalePending(t *testing.T) {
 			t.Fatalf("%s supprimé à tort : %v", id, err)
 		}
 	}
+}
+
+// manifest renvoie le manifeste de la version actuelle.
+func (s *Store) manifest(fileID string) (Manifest, error) {
+	m, _, err := s.Manifest(fileID, 0)
+	return m, err
 }

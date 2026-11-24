@@ -13,7 +13,7 @@ import (
 func readyFile(t *testing.T, s *Store, id string, owner int64) {
 	t.Helper()
 	createFile(t, s, id, owner, 100)
-	if err := s.ConfirmUpload(id, owner, newManifest(1, 100)); err != nil {
+	if err := s.ConfirmUpload(id, 1, owner, newManifest(1, 100)); err != nil {
 		t.Fatal(err)
 	}
 }
@@ -24,7 +24,7 @@ func TestGrants(t *testing.T) {
 	alice, bob, charlie := newUser(t, s, "alice"), newUser(t, s, "bob"), newUser(t, s, "charlie")
 	readyFile(t, s, "f1", alice)
 
-	if err := s.PutGrant("f1", alice, bob, []byte("autorisation"), []byte("nom pour bob")); err != nil {
+	if err := s.PutGrant("f1", bob, []byte("autorisation"), []byte("nom pour bob")); err != nil {
 		t.Fatal(err)
 	}
 	g, err := s.Grant("f1", bob)
@@ -44,24 +44,24 @@ func TestGrants(t *testing.T) {
 	}
 
 	// Un nouveau partage avec bob remplace l'ancien.
-	if err := s.PutGrant("f1", alice, bob, []byte("autorisation 2"), []byte("nom")); err != nil {
+	if err := s.PutGrant("f1", bob, []byte("autorisation 2"), []byte("nom")); err != nil {
 		t.Fatal(err)
 	}
 	if g, _ := s.Grant("f1", bob); string(g) != "autorisation 2" {
 		t.Fatalf("autorisation non remplacée : %q", g)
 	}
 
-	// Seul le propriétaire peut retirer le partage.
-	if err := s.DeleteGrant("f1", charlie, bob); !errors.Is(err, ErrNotFound) {
-		t.Fatalf("charlie retire un partage d'alice : %v", err)
+	// Retirer un partage inexistant.
+	if err := s.DeleteGrant("f1", charlie); !errors.Is(err, ErrNotFound) {
+		t.Fatalf("retrait d'un partage inexistant : %v", err)
 	}
-	if err := s.DeleteGrant("f1", alice, bob); err != nil {
+	if err := s.DeleteGrant("f1", bob); err != nil {
 		t.Fatal(err)
 	}
 	if shared, _ := s.FilesSharedWith(bob); len(shared) != 0 {
 		t.Fatalf("partage toujours visible après retrait : %+v", shared)
 	}
-	if err := s.DeleteGrant("f1", alice, bob); !errors.Is(err, ErrNotFound) {
+	if err := s.DeleteGrant("f1", bob); !errors.Is(err, ErrNotFound) {
 		t.Fatalf("second retrait : %v", err)
 	}
 }
@@ -78,13 +78,12 @@ func TestPutGrantRules(t *testing.T) {
 		owner, grantee int64
 		want           error
 	}{
-		"fichier inconnu":       {"absent", alice, bob, ErrNotFound},
-		"pas le propriétaire":   {"f1", bob, alice, ErrNotOwner},
-		"dépôt non confirmé":    {"pending", alice, bob, ErrConflict},
-		"partage avec soi-même": {"f1", alice, alice, ErrInvalidArgument},
+		"fichier inconnu":         {"absent", alice, bob, ErrNotFound},
+		"dépôt non confirmé":      {"pending", alice, bob, ErrConflict},
+		"partage au propriétaire": {"f1", bob, alice, ErrInvalidArgument},
 	}
 	for name, c := range cases {
-		if err := s.PutGrant(c.fileID, c.owner, c.grantee, []byte("g"), []byte("n")); !errors.Is(err, c.want) {
+		if err := s.PutGrant(c.fileID, c.grantee, []byte("g"), []byte("n")); !errors.Is(err, c.want) {
 			t.Errorf("%s : erreur %v, attendue %v", name, err, c.want)
 		}
 	}

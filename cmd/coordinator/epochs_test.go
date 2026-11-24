@@ -218,7 +218,7 @@ func TestRefreshBlockedByPendingUploadAndBlocksUploads(t *testing.T) {
 	}
 
 	// Dépôt confirmé : le renouvellement passe et le fichier suit la nouvelle époque.
-	if err := store.ConfirmUpload("f1", owner, metadata.Manifest{Size: 1}); err != nil {
+	if err := store.ConfirmUpload("f1", 1, owner, metadata.Manifest{Size: 1}); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := m.refresh(context.Background()); err != nil {

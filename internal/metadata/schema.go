@@ -11,7 +11,8 @@ import (
 //
 //	1 : schéma initial
 //	2 : partages de fichiers (table grants)
-const schemaVersion = 2
+//	3 : versions, droits étendus, retraits d'accès, transferts de propriété, groupes
+const schemaVersion = 3
 
 // schemaV1 crée les tables du coordinateur. Les dates sont des secondes Unix (INTEGER).
 //
@@ -122,6 +123,70 @@ CREATE TABLE grants (
 CREATE INDEX grants_by_grantee ON grants(grantee_id);
 `
 
+// schemaV3 ajoute les versions d'un fichier (chacune avec son manifeste), les retraits
+// d'accès, les anciens propriétaires et les groupes d'utilisateurs. Les manifestes et
+// blocs existants deviennent la version 1 de leur fichier.
+const schemaV3 = `
+CREATE TABLE versions (
+	file_id      TEXT    NOT NULL REFERENCES files(file_id) ON DELETE CASCADE,
+	version      INTEGER NOT NULL CHECK (version >= 1),
+	author_id    INTEGER NOT NULL REFERENCES users(id),
+	size         INTEGER NOT NULL CHECK (size >= 0),
+	status       TEXT    NOT NULL CHECK (status IN ('pending', 'ready')),
+	created_at   INTEGER NOT NULL,
+	block_count  INTEGER,
+	nonce_prefix BLOB,
+	PRIMARY KEY (file_id, version)
+);
+CREATE TABLE version_blocks (
+	file_id TEXT    NOT NULL,
+	version INTEGER NOT NULL,
+	idx     INTEGER NOT NULL CHECK (idx >= 0),
+	sha256  BLOB    NOT NULL CHECK (length(sha256) = 32),
+	PRIMARY KEY (file_id, version, idx),
+	FOREIGN KEY (file_id, version) REFERENCES versions(file_id, version) ON DELETE CASCADE
+);
+INSERT INTO versions (file_id, version, author_id, size, status, created_at, block_count, nonce_prefix)
+	SELECT f.file_id, 1, f.owner_id, f.size, f.status, coalesce(f.confirmed_at, f.created_at),
+	       m.block_count, m.nonce_prefix
+	FROM files f LEFT JOIN manifests m ON m.file_id = f.file_id;
+INSERT INTO version_blocks (file_id, version, idx, sha256) SELECT file_id, 1, idx, sha256 FROM blocks;
+DROP TABLE blocks;
+DROP TABLE manifests;
+ALTER TABLE files ADD COLUMN current_version INTEGER NOT NULL DEFAULT 1;
+
+-- Retraits d'accès signés : une autorisation de la clé public_key émise avant revoked_at
+-- est refusée, ainsi que toutes celles qui en découlent.
+CREATE TABLE revocations (
+	file_id     TEXT    NOT NULL REFERENCES files(file_id) ON DELETE CASCADE,
+	public_key  BLOB    NOT NULL CHECK (length(public_key) = 32),
+	revoked_at  INTEGER NOT NULL,
+	PRIMARY KEY (file_id, public_key)
+);
+
+-- Anciens propriétaires : leurs autorisations signées avant until restent valables.
+CREATE TABLE previous_owners (
+	file_id    TEXT    NOT NULL REFERENCES files(file_id) ON DELETE CASCADE,
+	public_key BLOB    NOT NULL CHECK (length(public_key) = 32),
+	until      INTEGER NOT NULL,
+	PRIMARY KEY (file_id, public_key)
+);
+
+-- Groupes d'utilisateurs, propres à chaque utilisateur, pour partager en une commande.
+CREATE TABLE user_groups (
+	id         INTEGER PRIMARY KEY,
+	owner_id   INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+	name       TEXT    NOT NULL,
+	created_at INTEGER NOT NULL,
+	UNIQUE (owner_id, name)
+);
+CREATE TABLE group_members (
+	group_id INTEGER NOT NULL REFERENCES user_groups(id) ON DELETE CASCADE,
+	user_id  INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+	PRIMARY KEY (group_id, user_id)
+);
+`
+
 // migrate amène la base à la version schemaVersion, étape par étape, et refuse une base
 // d'une version inconnue. Toutes les étapes sont faites dans une seule transaction :
 // une base n'est jamais laissée à moitié migrée.
@@ -156,6 +221,11 @@ func migrate(db *sql.DB, now time.Time) error {
 	}
 	if version < 2 {
 		if _, err := tx.Exec(schemaV2); err != nil {
+			return err
+		}
+	}
+	if version < 3 {
+		if _, err := tx.Exec(schemaV3); err != nil {
 			return err
 		}
 	}
