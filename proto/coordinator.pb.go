@@ -366,13 +366,13 @@ func (x *NodeInfo) GetX() uint32 {
 	return 0
 }
 
-// Informations publiques nécessaires pour relire un fichier (aucune clé dedans).
+// Informations publiques nécessaires pour relire une version d'un fichier (aucune clé dedans).
 type Manifest struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	BlockCount    uint32                 `protobuf:"varint,1,opt,name=block_count,json=blockCount,proto3" json:"block_count,omitempty"`
 	BlockHashes   [][]byte               `protobuf:"bytes,2,rep,name=block_hashes,json=blockHashes,proto3" json:"block_hashes,omitempty"` // SHA-256 de chaque bloc chiffré, dans l'ordre
-	NoncePrefix   []byte                 `protobuf:"bytes,3,opt,name=nonce_prefix,json=noncePrefix,proto3" json:"nonce_prefix,omitempty"` // préfixe des nonces AES-GCM
-	Size          uint64                 `protobuf:"varint,4,opt,name=size,proto3" json:"size,omitempty"`                                 // taille du fichier en clair, en octets
+	NoncePrefix   []byte                 `protobuf:"bytes,3,opt,name=nonce_prefix,json=noncePrefix,proto3" json:"nonce_prefix,omitempty"` // inutilisé (les nonces sont dérivés du numéro de bloc)
+	Size          uint64                 `protobuf:"varint,4,opt,name=size,proto3" json:"size,omitempty"`                                 // taille arrondie du contenu chiffré
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -437,9 +437,9 @@ func (x *Manifest) GetSize() uint64 {
 
 type CreateFileRequest struct {
 	state protoimpl.MessageState `protogen:"open.v1"`
-	// Nom chiffré côté client : le coordinateur ne le lit jamais.
+	// Nom chiffré pour le propriétaire (avec sa clé publique) : le coordinateur ne le lit jamais.
 	EncryptedName []byte `protobuf:"bytes,1,opt,name=encrypted_name,json=encryptedName,proto3" json:"encrypted_name,omitempty"`
-	// Taille du fichier après remplissage (arrondie) : la taille exacte reste chez le client.
+	// Taille après remplissage (arrondie) : la taille exacte reste chez le client.
 	Size          uint64 `protobuf:"varint,2,opt,name=size,proto3" json:"size,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
@@ -494,8 +494,9 @@ type CreateFileResponse struct {
 	FileId        string                 `protobuf:"bytes,1,opt,name=file_id,json=fileId,proto3" json:"file_id,omitempty"`
 	Epoch         uint64                 `protobuf:"varint,2,opt,name=epoch,proto3" json:"epoch,omitempty"` // époque à laquelle rattacher les parts
 	Nodes         []*NodeInfo            `protobuf:"bytes,3,rep,name=nodes,proto3" json:"nodes,omitempty"`
-	T             uint32                 `protobuf:"varint,4,opt,name=t,proto3" json:"t,omitempty"` // seuil
-	N             uint32                 `protobuf:"varint,5,opt,name=n,proto3" json:"n,omitempty"` // nombre de parts
+	T             uint32                 `protobuf:"varint,4,opt,name=t,proto3" json:"t,omitempty"`             // seuil
+	N             uint32                 `protobuf:"varint,5,opt,name=n,proto3" json:"n,omitempty"`             // nombre de parts
+	Version       uint32                 `protobuf:"varint,6,opt,name=version,proto3" json:"version,omitempty"` // 1
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -565,17 +566,154 @@ func (x *CreateFileResponse) GetN() uint32 {
 	return 0
 }
 
+func (x *CreateFileResponse) GetVersion() uint32 {
+	if x != nil {
+		return x.Version
+	}
+	return 0
+}
+
+// Commence une nouvelle version d'un fichier existant (droit w).
+type CreateVersionRequest struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	FileId        string                 `protobuf:"bytes,1,opt,name=file_id,json=fileId,proto3" json:"file_id,omitempty"`
+	Size          uint64                 `protobuf:"varint,2,opt,name=size,proto3" json:"size,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *CreateVersionRequest) Reset() {
+	*x = CreateVersionRequest{}
+	mi := &file_coordinator_proto_msgTypes[10]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *CreateVersionRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*CreateVersionRequest) ProtoMessage() {}
+
+func (x *CreateVersionRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_coordinator_proto_msgTypes[10]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use CreateVersionRequest.ProtoReflect.Descriptor instead.
+func (*CreateVersionRequest) Descriptor() ([]byte, []int) {
+	return file_coordinator_proto_rawDescGZIP(), []int{10}
+}
+
+func (x *CreateVersionRequest) GetFileId() string {
+	if x != nil {
+		return x.FileId
+	}
+	return ""
+}
+
+func (x *CreateVersionRequest) GetSize() uint64 {
+	if x != nil {
+		return x.Size
+	}
+	return 0
+}
+
+type CreateVersionResponse struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Version       uint32                 `protobuf:"varint,1,opt,name=version,proto3" json:"version,omitempty"`
+	Epoch         uint64                 `protobuf:"varint,2,opt,name=epoch,proto3" json:"epoch,omitempty"`
+	Nodes         []*NodeInfo            `protobuf:"bytes,3,rep,name=nodes,proto3" json:"nodes,omitempty"`
+	T             uint32                 `protobuf:"varint,4,opt,name=t,proto3" json:"t,omitempty"`
+	N             uint32                 `protobuf:"varint,5,opt,name=n,proto3" json:"n,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *CreateVersionResponse) Reset() {
+	*x = CreateVersionResponse{}
+	mi := &file_coordinator_proto_msgTypes[11]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *CreateVersionResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*CreateVersionResponse) ProtoMessage() {}
+
+func (x *CreateVersionResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_coordinator_proto_msgTypes[11]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use CreateVersionResponse.ProtoReflect.Descriptor instead.
+func (*CreateVersionResponse) Descriptor() ([]byte, []int) {
+	return file_coordinator_proto_rawDescGZIP(), []int{11}
+}
+
+func (x *CreateVersionResponse) GetVersion() uint32 {
+	if x != nil {
+		return x.Version
+	}
+	return 0
+}
+
+func (x *CreateVersionResponse) GetEpoch() uint64 {
+	if x != nil {
+		return x.Epoch
+	}
+	return 0
+}
+
+func (x *CreateVersionResponse) GetNodes() []*NodeInfo {
+	if x != nil {
+		return x.Nodes
+	}
+	return nil
+}
+
+func (x *CreateVersionResponse) GetT() uint32 {
+	if x != nil {
+		return x.T
+	}
+	return 0
+}
+
+func (x *CreateVersionResponse) GetN() uint32 {
+	if x != nil {
+		return x.N
+	}
+	return 0
+}
+
 type ConfirmUploadRequest struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	FileId        string                 `protobuf:"bytes,1,opt,name=file_id,json=fileId,proto3" json:"file_id,omitempty"`
 	Manifest      *Manifest              `protobuf:"bytes,2,opt,name=manifest,proto3" json:"manifest,omitempty"`
+	Version       uint32                 `protobuf:"varint,3,opt,name=version,proto3" json:"version,omitempty"` // 0 ou 1 pour le premier dépôt
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
 
 func (x *ConfirmUploadRequest) Reset() {
 	*x = ConfirmUploadRequest{}
-	mi := &file_coordinator_proto_msgTypes[10]
+	mi := &file_coordinator_proto_msgTypes[12]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -587,7 +725,7 @@ func (x *ConfirmUploadRequest) String() string {
 func (*ConfirmUploadRequest) ProtoMessage() {}
 
 func (x *ConfirmUploadRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_coordinator_proto_msgTypes[10]
+	mi := &file_coordinator_proto_msgTypes[12]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -600,7 +738,7 @@ func (x *ConfirmUploadRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ConfirmUploadRequest.ProtoReflect.Descriptor instead.
 func (*ConfirmUploadRequest) Descriptor() ([]byte, []int) {
-	return file_coordinator_proto_rawDescGZIP(), []int{10}
+	return file_coordinator_proto_rawDescGZIP(), []int{12}
 }
 
 func (x *ConfirmUploadRequest) GetFileId() string {
@@ -617,6 +755,13 @@ func (x *ConfirmUploadRequest) GetManifest() *Manifest {
 	return nil
 }
 
+func (x *ConfirmUploadRequest) GetVersion() uint32 {
+	if x != nil {
+		return x.Version
+	}
+	return 0
+}
+
 type ConfirmUploadResponse struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	unknownFields protoimpl.UnknownFields
@@ -625,7 +770,7 @@ type ConfirmUploadResponse struct {
 
 func (x *ConfirmUploadResponse) Reset() {
 	*x = ConfirmUploadResponse{}
-	mi := &file_coordinator_proto_msgTypes[11]
+	mi := &file_coordinator_proto_msgTypes[13]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -637,7 +782,7 @@ func (x *ConfirmUploadResponse) String() string {
 func (*ConfirmUploadResponse) ProtoMessage() {}
 
 func (x *ConfirmUploadResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_coordinator_proto_msgTypes[11]
+	mi := &file_coordinator_proto_msgTypes[13]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -650,7 +795,7 @@ func (x *ConfirmUploadResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ConfirmUploadResponse.ProtoReflect.Descriptor instead.
 func (*ConfirmUploadResponse) Descriptor() ([]byte, []int) {
-	return file_coordinator_proto_rawDescGZIP(), []int{11}
+	return file_coordinator_proto_rawDescGZIP(), []int{13}
 }
 
 type ListFilesRequest struct {
@@ -661,7 +806,7 @@ type ListFilesRequest struct {
 
 func (x *ListFilesRequest) Reset() {
 	*x = ListFilesRequest{}
-	mi := &file_coordinator_proto_msgTypes[12]
+	mi := &file_coordinator_proto_msgTypes[14]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -673,7 +818,7 @@ func (x *ListFilesRequest) String() string {
 func (*ListFilesRequest) ProtoMessage() {}
 
 func (x *ListFilesRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_coordinator_proto_msgTypes[12]
+	mi := &file_coordinator_proto_msgTypes[14]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -686,25 +831,27 @@ func (x *ListFilesRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ListFilesRequest.ProtoReflect.Descriptor instead.
 func (*ListFilesRequest) Descriptor() ([]byte, []int) {
-	return file_coordinator_proto_rawDescGZIP(), []int{12}
+	return file_coordinator_proto_rawDescGZIP(), []int{14}
 }
 
 type FileInfo struct {
-	state  protoimpl.MessageState `protogen:"open.v1"`
-	FileId string                 `protobuf:"bytes,1,opt,name=file_id,json=fileId,proto3" json:"file_id,omitempty"`
-	// Nom chiffré : pour le propriétaire, avec sa propre clé ; pour un destinataire,
-	// avec sa clé publique (copie jointe au partage).
-	EncryptedName []byte `protobuf:"bytes,2,opt,name=encrypted_name,json=encryptedName,proto3" json:"encrypted_name,omitempty"`
-	Size          uint64 `protobuf:"varint,3,opt,name=size,proto3" json:"size,omitempty"`     // taille arrondie
-	Owner         string `protobuf:"bytes,4,opt,name=owner,proto3" json:"owner,omitempty"`    // nom d'utilisateur du propriétaire
-	Shared        bool   `protobuf:"varint,5,opt,name=shared,proto3" json:"shared,omitempty"` // vrai si le fichier est partagé AVEC l'utilisateur
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	FileId        string                 `protobuf:"bytes,1,opt,name=file_id,json=fileId,proto3" json:"file_id,omitempty"`
+	EncryptedName []byte                 `protobuf:"bytes,2,opt,name=encrypted_name,json=encryptedName,proto3" json:"encrypted_name,omitempty"` // nom chiffré pour l'utilisateur qui liste
+	Size          uint64                 `protobuf:"varint,3,opt,name=size,proto3" json:"size,omitempty"`                                       // taille arrondie de la version actuelle
+	Owner         string                 `protobuf:"bytes,4,opt,name=owner,proto3" json:"owner,omitempty"`                                      // nom d'utilisateur du propriétaire
+	Shared        bool                   `protobuf:"varint,5,opt,name=shared,proto3" json:"shared,omitempty"`                                   // vrai si le fichier est partagé AVEC l'utilisateur
+	Rights        uint32                 `protobuf:"varint,6,opt,name=rights,proto3" json:"rights,omitempty"`                                   // droits de l'utilisateur (r = 1, w = 2, s = 4, d = 8, m = 16)
+	Version       uint32                 `protobuf:"varint,7,opt,name=version,proto3" json:"version,omitempty"`                                 // version actuelle
+	ModifiedAt    int64                  `protobuf:"varint,8,opt,name=modified_at,json=modifiedAt,proto3" json:"modified_at,omitempty"`         // date de la version actuelle (secondes Unix)
+	ExpiresAt     int64                  `protobuf:"varint,9,opt,name=expires_at,json=expiresAt,proto3" json:"expires_at,omitempty"`            // fin de l'accès partagé (0 = sans limite)
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
 
 func (x *FileInfo) Reset() {
 	*x = FileInfo{}
-	mi := &file_coordinator_proto_msgTypes[13]
+	mi := &file_coordinator_proto_msgTypes[15]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -716,7 +863,7 @@ func (x *FileInfo) String() string {
 func (*FileInfo) ProtoMessage() {}
 
 func (x *FileInfo) ProtoReflect() protoreflect.Message {
-	mi := &file_coordinator_proto_msgTypes[13]
+	mi := &file_coordinator_proto_msgTypes[15]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -729,7 +876,7 @@ func (x *FileInfo) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use FileInfo.ProtoReflect.Descriptor instead.
 func (*FileInfo) Descriptor() ([]byte, []int) {
-	return file_coordinator_proto_rawDescGZIP(), []int{13}
+	return file_coordinator_proto_rawDescGZIP(), []int{15}
 }
 
 func (x *FileInfo) GetFileId() string {
@@ -767,6 +914,34 @@ func (x *FileInfo) GetShared() bool {
 	return false
 }
 
+func (x *FileInfo) GetRights() uint32 {
+	if x != nil {
+		return x.Rights
+	}
+	return 0
+}
+
+func (x *FileInfo) GetVersion() uint32 {
+	if x != nil {
+		return x.Version
+	}
+	return 0
+}
+
+func (x *FileInfo) GetModifiedAt() int64 {
+	if x != nil {
+		return x.ModifiedAt
+	}
+	return 0
+}
+
+func (x *FileInfo) GetExpiresAt() int64 {
+	if x != nil {
+		return x.ExpiresAt
+	}
+	return 0
+}
+
 type ListFilesResponse struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	Files         []*FileInfo            `protobuf:"bytes,1,rep,name=files,proto3" json:"files,omitempty"`
@@ -776,7 +951,7 @@ type ListFilesResponse struct {
 
 func (x *ListFilesResponse) Reset() {
 	*x = ListFilesResponse{}
-	mi := &file_coordinator_proto_msgTypes[14]
+	mi := &file_coordinator_proto_msgTypes[16]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -788,7 +963,7 @@ func (x *ListFilesResponse) String() string {
 func (*ListFilesResponse) ProtoMessage() {}
 
 func (x *ListFilesResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_coordinator_proto_msgTypes[14]
+	mi := &file_coordinator_proto_msgTypes[16]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -801,7 +976,7 @@ func (x *ListFilesResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ListFilesResponse.ProtoReflect.Descriptor instead.
 func (*ListFilesResponse) Descriptor() ([]byte, []int) {
-	return file_coordinator_proto_rawDescGZIP(), []int{14}
+	return file_coordinator_proto_rawDescGZIP(), []int{16}
 }
 
 func (x *ListFilesResponse) GetFiles() []*FileInfo {
@@ -814,13 +989,14 @@ func (x *ListFilesResponse) GetFiles() []*FileInfo {
 type GetFileRequest struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	FileId        string                 `protobuf:"bytes,1,opt,name=file_id,json=fileId,proto3" json:"file_id,omitempty"`
+	Version       uint32                 `protobuf:"varint,2,opt,name=version,proto3" json:"version,omitempty"` // 0 = version actuelle
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
 
 func (x *GetFileRequest) Reset() {
 	*x = GetFileRequest{}
-	mi := &file_coordinator_proto_msgTypes[15]
+	mi := &file_coordinator_proto_msgTypes[17]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -832,7 +1008,7 @@ func (x *GetFileRequest) String() string {
 func (*GetFileRequest) ProtoMessage() {}
 
 func (x *GetFileRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_coordinator_proto_msgTypes[15]
+	mi := &file_coordinator_proto_msgTypes[17]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -845,7 +1021,7 @@ func (x *GetFileRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use GetFileRequest.ProtoReflect.Descriptor instead.
 func (*GetFileRequest) Descriptor() ([]byte, []int) {
-	return file_coordinator_proto_rawDescGZIP(), []int{15}
+	return file_coordinator_proto_rawDescGZIP(), []int{17}
 }
 
 func (x *GetFileRequest) GetFileId() string {
@@ -855,20 +1031,30 @@ func (x *GetFileRequest) GetFileId() string {
 	return ""
 }
 
+func (x *GetFileRequest) GetVersion() uint32 {
+	if x != nil {
+		return x.Version
+	}
+	return 0
+}
+
 type GetFileResponse struct {
-	state         protoimpl.MessageState `protogen:"open.v1"`
-	Epoch         uint64                 `protobuf:"varint,1,opt,name=epoch,proto3" json:"epoch,omitempty"` // époque actuelle des parts
-	T             uint32                 `protobuf:"varint,2,opt,name=t,proto3" json:"t,omitempty"`
-	Manifest      *Manifest              `protobuf:"bytes,3,opt,name=manifest,proto3" json:"manifest,omitempty"`
-	Nodes         []*NodeInfo            `protobuf:"bytes,4,rep,name=nodes,proto3" json:"nodes,omitempty"`
-	Grant         *Grant                 `protobuf:"bytes,5,opt,name=grant,proto3" json:"grant,omitempty"` // autorisation à présenter aux nœuds (destinataire seulement)
-	unknownFields protoimpl.UnknownFields
-	sizeCache     protoimpl.SizeCache
+	state          protoimpl.MessageState `protogen:"open.v1"`
+	Epoch          uint64                 `protobuf:"varint,1,opt,name=epoch,proto3" json:"epoch,omitempty"` // époque actuelle des parts
+	T              uint32                 `protobuf:"varint,2,opt,name=t,proto3" json:"t,omitempty"`
+	Manifest       *Manifest              `protobuf:"bytes,3,opt,name=manifest,proto3" json:"manifest,omitempty"`
+	Nodes          []*NodeInfo            `protobuf:"bytes,4,rep,name=nodes,proto3" json:"nodes,omitempty"`
+	Grant          *Grant                 `protobuf:"bytes,5,opt,name=grant,proto3" json:"grant,omitempty"`      // autorisation de l'utilisateur, à présenter aux nœuds (absente pour le propriétaire)
+	Version        uint32                 `protobuf:"varint,6,opt,name=version,proto3" json:"version,omitempty"` // version renvoyée
+	Rights         uint32                 `protobuf:"varint,7,opt,name=rights,proto3" json:"rights,omitempty"`   // droits de l'utilisateur
+	CurrentVersion uint32                 `protobuf:"varint,8,opt,name=current_version,json=currentVersion,proto3" json:"current_version,omitempty"`
+	unknownFields  protoimpl.UnknownFields
+	sizeCache      protoimpl.SizeCache
 }
 
 func (x *GetFileResponse) Reset() {
 	*x = GetFileResponse{}
-	mi := &file_coordinator_proto_msgTypes[16]
+	mi := &file_coordinator_proto_msgTypes[18]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -880,7 +1066,7 @@ func (x *GetFileResponse) String() string {
 func (*GetFileResponse) ProtoMessage() {}
 
 func (x *GetFileResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_coordinator_proto_msgTypes[16]
+	mi := &file_coordinator_proto_msgTypes[18]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -893,7 +1079,7 @@ func (x *GetFileResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use GetFileResponse.ProtoReflect.Descriptor instead.
 func (*GetFileResponse) Descriptor() ([]byte, []int) {
-	return file_coordinator_proto_rawDescGZIP(), []int{16}
+	return file_coordinator_proto_rawDescGZIP(), []int{18}
 }
 
 func (x *GetFileResponse) GetEpoch() uint64 {
@@ -931,6 +1117,505 @@ func (x *GetFileResponse) GetGrant() *Grant {
 	return nil
 }
 
+func (x *GetFileResponse) GetVersion() uint32 {
+	if x != nil {
+		return x.Version
+	}
+	return 0
+}
+
+func (x *GetFileResponse) GetRights() uint32 {
+	if x != nil {
+		return x.Rights
+	}
+	return 0
+}
+
+func (x *GetFileResponse) GetCurrentVersion() uint32 {
+	if x != nil {
+		return x.CurrentVersion
+	}
+	return 0
+}
+
+type VersionInfo struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Version       uint32                 `protobuf:"varint,1,opt,name=version,proto3" json:"version,omitempty"`
+	Size          uint64                 `protobuf:"varint,2,opt,name=size,proto3" json:"size,omitempty"`
+	Author        string                 `protobuf:"bytes,3,opt,name=author,proto3" json:"author,omitempty"` // utilisateur qui a déposé cette version
+	CreatedAt     int64                  `protobuf:"varint,4,opt,name=created_at,json=createdAt,proto3" json:"created_at,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *VersionInfo) Reset() {
+	*x = VersionInfo{}
+	mi := &file_coordinator_proto_msgTypes[19]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *VersionInfo) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*VersionInfo) ProtoMessage() {}
+
+func (x *VersionInfo) ProtoReflect() protoreflect.Message {
+	mi := &file_coordinator_proto_msgTypes[19]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use VersionInfo.ProtoReflect.Descriptor instead.
+func (*VersionInfo) Descriptor() ([]byte, []int) {
+	return file_coordinator_proto_rawDescGZIP(), []int{19}
+}
+
+func (x *VersionInfo) GetVersion() uint32 {
+	if x != nil {
+		return x.Version
+	}
+	return 0
+}
+
+func (x *VersionInfo) GetSize() uint64 {
+	if x != nil {
+		return x.Size
+	}
+	return 0
+}
+
+func (x *VersionInfo) GetAuthor() string {
+	if x != nil {
+		return x.Author
+	}
+	return ""
+}
+
+func (x *VersionInfo) GetCreatedAt() int64 {
+	if x != nil {
+		return x.CreatedAt
+	}
+	return 0
+}
+
+type ListVersionsRequest struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	FileId        string                 `protobuf:"bytes,1,opt,name=file_id,json=fileId,proto3" json:"file_id,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *ListVersionsRequest) Reset() {
+	*x = ListVersionsRequest{}
+	mi := &file_coordinator_proto_msgTypes[20]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *ListVersionsRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*ListVersionsRequest) ProtoMessage() {}
+
+func (x *ListVersionsRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_coordinator_proto_msgTypes[20]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use ListVersionsRequest.ProtoReflect.Descriptor instead.
+func (*ListVersionsRequest) Descriptor() ([]byte, []int) {
+	return file_coordinator_proto_rawDescGZIP(), []int{20}
+}
+
+func (x *ListVersionsRequest) GetFileId() string {
+	if x != nil {
+		return x.FileId
+	}
+	return ""
+}
+
+type ListVersionsResponse struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Versions      []*VersionInfo         `protobuf:"bytes,1,rep,name=versions,proto3" json:"versions,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *ListVersionsResponse) Reset() {
+	*x = ListVersionsResponse{}
+	mi := &file_coordinator_proto_msgTypes[21]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *ListVersionsResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*ListVersionsResponse) ProtoMessage() {}
+
+func (x *ListVersionsResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_coordinator_proto_msgTypes[21]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use ListVersionsResponse.ProtoReflect.Descriptor instead.
+func (*ListVersionsResponse) Descriptor() ([]byte, []int) {
+	return file_coordinator_proto_rawDescGZIP(), []int{21}
+}
+
+func (x *ListVersionsResponse) GetVersions() []*VersionInfo {
+	if x != nil {
+		return x.Versions
+	}
+	return nil
+}
+
+// Nom chiffré pour un utilisateur donné.
+type UserName struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Username      string                 `protobuf:"bytes,1,opt,name=username,proto3" json:"username,omitempty"`
+	EncryptedName []byte                 `protobuf:"bytes,2,opt,name=encrypted_name,json=encryptedName,proto3" json:"encrypted_name,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *UserName) Reset() {
+	*x = UserName{}
+	mi := &file_coordinator_proto_msgTypes[22]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *UserName) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*UserName) ProtoMessage() {}
+
+func (x *UserName) ProtoReflect() protoreflect.Message {
+	mi := &file_coordinator_proto_msgTypes[22]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use UserName.ProtoReflect.Descriptor instead.
+func (*UserName) Descriptor() ([]byte, []int) {
+	return file_coordinator_proto_rawDescGZIP(), []int{22}
+}
+
+func (x *UserName) GetUsername() string {
+	if x != nil {
+		return x.Username
+	}
+	return ""
+}
+
+func (x *UserName) GetEncryptedName() []byte {
+	if x != nil {
+		return x.EncryptedName
+	}
+	return nil
+}
+
+// Renomme un fichier (propriétaire ou droit m) : le client rechiffre le nouveau nom pour
+// chaque utilisateur qui a accès au fichier.
+type RenameFileRequest struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	FileId        string                 `protobuf:"bytes,1,opt,name=file_id,json=fileId,proto3" json:"file_id,omitempty"`
+	Names         []*UserName            `protobuf:"bytes,2,rep,name=names,proto3" json:"names,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *RenameFileRequest) Reset() {
+	*x = RenameFileRequest{}
+	mi := &file_coordinator_proto_msgTypes[23]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *RenameFileRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*RenameFileRequest) ProtoMessage() {}
+
+func (x *RenameFileRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_coordinator_proto_msgTypes[23]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use RenameFileRequest.ProtoReflect.Descriptor instead.
+func (*RenameFileRequest) Descriptor() ([]byte, []int) {
+	return file_coordinator_proto_rawDescGZIP(), []int{23}
+}
+
+func (x *RenameFileRequest) GetFileId() string {
+	if x != nil {
+		return x.FileId
+	}
+	return ""
+}
+
+func (x *RenameFileRequest) GetNames() []*UserName {
+	if x != nil {
+		return x.Names
+	}
+	return nil
+}
+
+type RenameFileResponse struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *RenameFileResponse) Reset() {
+	*x = RenameFileResponse{}
+	mi := &file_coordinator_proto_msgTypes[24]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *RenameFileResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*RenameFileResponse) ProtoMessage() {}
+
+func (x *RenameFileResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_coordinator_proto_msgTypes[24]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use RenameFileResponse.ProtoReflect.Descriptor instead.
+func (*RenameFileResponse) Descriptor() ([]byte, []int) {
+	return file_coordinator_proto_rawDescGZIP(), []int{24}
+}
+
+// Supprime un fichier chez le coordinateur (propriétaire ou droit d), après son effacement
+// sur les nœuds.
+type RemoveFileRequest struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	FileId        string                 `protobuf:"bytes,1,opt,name=file_id,json=fileId,proto3" json:"file_id,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *RemoveFileRequest) Reset() {
+	*x = RemoveFileRequest{}
+	mi := &file_coordinator_proto_msgTypes[25]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *RemoveFileRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*RemoveFileRequest) ProtoMessage() {}
+
+func (x *RemoveFileRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_coordinator_proto_msgTypes[25]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use RemoveFileRequest.ProtoReflect.Descriptor instead.
+func (*RemoveFileRequest) Descriptor() ([]byte, []int) {
+	return file_coordinator_proto_rawDescGZIP(), []int{25}
+}
+
+func (x *RemoveFileRequest) GetFileId() string {
+	if x != nil {
+		return x.FileId
+	}
+	return ""
+}
+
+type RemoveFileResponse struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *RemoveFileResponse) Reset() {
+	*x = RemoveFileResponse{}
+	mi := &file_coordinator_proto_msgTypes[26]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *RemoveFileResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*RemoveFileResponse) ProtoMessage() {}
+
+func (x *RemoveFileResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_coordinator_proto_msgTypes[26]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use RemoveFileResponse.ProtoReflect.Descriptor instead.
+func (*RemoveFileResponse) Descriptor() ([]byte, []int) {
+	return file_coordinator_proto_rawDescGZIP(), []int{26}
+}
+
+// Transfère la propriété d'un fichier (propriétaire seulement).
+type TransferFileRequest struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	NewOwner      string                 `protobuf:"bytes,1,opt,name=new_owner,json=newOwner,proto3" json:"new_owner,omitempty"`
+	Transfer      *Transfer              `protobuf:"bytes,2,opt,name=transfer,proto3" json:"transfer,omitempty"`                                // signé par le propriétaire actuel
+	EncryptedName []byte                 `protobuf:"bytes,3,opt,name=encrypted_name,json=encryptedName,proto3" json:"encrypted_name,omitempty"` // nom chiffré pour le nouveau propriétaire
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *TransferFileRequest) Reset() {
+	*x = TransferFileRequest{}
+	mi := &file_coordinator_proto_msgTypes[27]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *TransferFileRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*TransferFileRequest) ProtoMessage() {}
+
+func (x *TransferFileRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_coordinator_proto_msgTypes[27]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use TransferFileRequest.ProtoReflect.Descriptor instead.
+func (*TransferFileRequest) Descriptor() ([]byte, []int) {
+	return file_coordinator_proto_rawDescGZIP(), []int{27}
+}
+
+func (x *TransferFileRequest) GetNewOwner() string {
+	if x != nil {
+		return x.NewOwner
+	}
+	return ""
+}
+
+func (x *TransferFileRequest) GetTransfer() *Transfer {
+	if x != nil {
+		return x.Transfer
+	}
+	return nil
+}
+
+func (x *TransferFileRequest) GetEncryptedName() []byte {
+	if x != nil {
+		return x.EncryptedName
+	}
+	return nil
+}
+
+type TransferFileResponse struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *TransferFileResponse) Reset() {
+	*x = TransferFileResponse{}
+	mi := &file_coordinator_proto_msgTypes[28]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *TransferFileResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*TransferFileResponse) ProtoMessage() {}
+
+func (x *TransferFileResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_coordinator_proto_msgTypes[28]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use TransferFileResponse.ProtoReflect.Descriptor instead.
+func (*TransferFileResponse) Descriptor() ([]byte, []int) {
+	return file_coordinator_proto_rawDescGZIP(), []int{28}
+}
+
 type GetUserKeyRequest struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	Username      string                 `protobuf:"bytes,1,opt,name=username,proto3" json:"username,omitempty"`
@@ -940,7 +1625,7 @@ type GetUserKeyRequest struct {
 
 func (x *GetUserKeyRequest) Reset() {
 	*x = GetUserKeyRequest{}
-	mi := &file_coordinator_proto_msgTypes[17]
+	mi := &file_coordinator_proto_msgTypes[29]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -952,7 +1637,7 @@ func (x *GetUserKeyRequest) String() string {
 func (*GetUserKeyRequest) ProtoMessage() {}
 
 func (x *GetUserKeyRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_coordinator_proto_msgTypes[17]
+	mi := &file_coordinator_proto_msgTypes[29]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -965,7 +1650,7 @@ func (x *GetUserKeyRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use GetUserKeyRequest.ProtoReflect.Descriptor instead.
 func (*GetUserKeyRequest) Descriptor() ([]byte, []int) {
-	return file_coordinator_proto_rawDescGZIP(), []int{17}
+	return file_coordinator_proto_rawDescGZIP(), []int{29}
 }
 
 func (x *GetUserKeyRequest) GetUsername() string {
@@ -984,7 +1669,7 @@ type GetUserKeyResponse struct {
 
 func (x *GetUserKeyResponse) Reset() {
 	*x = GetUserKeyResponse{}
-	mi := &file_coordinator_proto_msgTypes[18]
+	mi := &file_coordinator_proto_msgTypes[30]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -996,7 +1681,7 @@ func (x *GetUserKeyResponse) String() string {
 func (*GetUserKeyResponse) ProtoMessage() {}
 
 func (x *GetUserKeyResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_coordinator_proto_msgTypes[18]
+	mi := &file_coordinator_proto_msgTypes[30]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1009,7 +1694,7 @@ func (x *GetUserKeyResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use GetUserKeyResponse.ProtoReflect.Descriptor instead.
 func (*GetUserKeyResponse) Descriptor() ([]byte, []int) {
-	return file_coordinator_proto_rawDescGZIP(), []int{18}
+	return file_coordinator_proto_rawDescGZIP(), []int{30}
 }
 
 func (x *GetUserKeyResponse) GetPublicKey() []byte {
@@ -1022,7 +1707,7 @@ func (x *GetUserKeyResponse) GetPublicKey() []byte {
 type ShareFileRequest struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	Grantee       string                 `protobuf:"bytes,1,opt,name=grantee,proto3" json:"grantee,omitempty"`                                  // nom d'utilisateur du destinataire
-	Grant         *Grant                 `protobuf:"bytes,2,opt,name=grant,proto3" json:"grant,omitempty"`                                      // signée par le propriétaire
+	Grant         *Grant                 `protobuf:"bytes,2,opt,name=grant,proto3" json:"grant,omitempty"`                                      // signée par l'appelant (propriétaire, ou droit s ou m)
 	EncryptedName []byte                 `protobuf:"bytes,3,opt,name=encrypted_name,json=encryptedName,proto3" json:"encrypted_name,omitempty"` // nom du fichier chiffré pour le destinataire
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
@@ -1030,7 +1715,7 @@ type ShareFileRequest struct {
 
 func (x *ShareFileRequest) Reset() {
 	*x = ShareFileRequest{}
-	mi := &file_coordinator_proto_msgTypes[19]
+	mi := &file_coordinator_proto_msgTypes[31]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1042,7 +1727,7 @@ func (x *ShareFileRequest) String() string {
 func (*ShareFileRequest) ProtoMessage() {}
 
 func (x *ShareFileRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_coordinator_proto_msgTypes[19]
+	mi := &file_coordinator_proto_msgTypes[31]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1055,7 +1740,7 @@ func (x *ShareFileRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ShareFileRequest.ProtoReflect.Descriptor instead.
 func (*ShareFileRequest) Descriptor() ([]byte, []int) {
-	return file_coordinator_proto_rawDescGZIP(), []int{19}
+	return file_coordinator_proto_rawDescGZIP(), []int{31}
 }
 
 func (x *ShareFileRequest) GetGrantee() string {
@@ -1087,7 +1772,7 @@ type ShareFileResponse struct {
 
 func (x *ShareFileResponse) Reset() {
 	*x = ShareFileResponse{}
-	mi := &file_coordinator_proto_msgTypes[20]
+	mi := &file_coordinator_proto_msgTypes[32]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1099,7 +1784,7 @@ func (x *ShareFileResponse) String() string {
 func (*ShareFileResponse) ProtoMessage() {}
 
 func (x *ShareFileResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_coordinator_proto_msgTypes[20]
+	mi := &file_coordinator_proto_msgTypes[32]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1112,20 +1797,21 @@ func (x *ShareFileResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ShareFileResponse.ProtoReflect.Descriptor instead.
 func (*ShareFileResponse) Descriptor() ([]byte, []int) {
-	return file_coordinator_proto_rawDescGZIP(), []int{20}
+	return file_coordinator_proto_rawDescGZIP(), []int{32}
 }
 
 type RevokeShareRequest struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	FileId        string                 `protobuf:"bytes,1,opt,name=file_id,json=fileId,proto3" json:"file_id,omitempty"`
 	Grantee       string                 `protobuf:"bytes,2,opt,name=grantee,proto3" json:"grantee,omitempty"`
+	Revocation    *Revocation            `protobuf:"bytes,3,opt,name=revocation,proto3" json:"revocation,omitempty"` // signée par le propriétaire ou un utilisateur qui a le droit m
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
 
 func (x *RevokeShareRequest) Reset() {
 	*x = RevokeShareRequest{}
-	mi := &file_coordinator_proto_msgTypes[21]
+	mi := &file_coordinator_proto_msgTypes[33]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1137,7 +1823,7 @@ func (x *RevokeShareRequest) String() string {
 func (*RevokeShareRequest) ProtoMessage() {}
 
 func (x *RevokeShareRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_coordinator_proto_msgTypes[21]
+	mi := &file_coordinator_proto_msgTypes[33]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1150,7 +1836,7 @@ func (x *RevokeShareRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use RevokeShareRequest.ProtoReflect.Descriptor instead.
 func (*RevokeShareRequest) Descriptor() ([]byte, []int) {
-	return file_coordinator_proto_rawDescGZIP(), []int{21}
+	return file_coordinator_proto_rawDescGZIP(), []int{33}
 }
 
 func (x *RevokeShareRequest) GetFileId() string {
@@ -1167,6 +1853,13 @@ func (x *RevokeShareRequest) GetGrantee() string {
 	return ""
 }
 
+func (x *RevokeShareRequest) GetRevocation() *Revocation {
+	if x != nil {
+		return x.Revocation
+	}
+	return nil
+}
+
 type RevokeShareResponse struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	unknownFields protoimpl.UnknownFields
@@ -1175,7 +1868,7 @@ type RevokeShareResponse struct {
 
 func (x *RevokeShareResponse) Reset() {
 	*x = RevokeShareResponse{}
-	mi := &file_coordinator_proto_msgTypes[22]
+	mi := &file_coordinator_proto_msgTypes[34]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1187,7 +1880,7 @@ func (x *RevokeShareResponse) String() string {
 func (*RevokeShareResponse) ProtoMessage() {}
 
 func (x *RevokeShareResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_coordinator_proto_msgTypes[22]
+	mi := &file_coordinator_proto_msgTypes[34]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1200,7 +1893,627 @@ func (x *RevokeShareResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use RevokeShareResponse.ProtoReflect.Descriptor instead.
 func (*RevokeShareResponse) Descriptor() ([]byte, []int) {
-	return file_coordinator_proto_rawDescGZIP(), []int{22}
+	return file_coordinator_proto_rawDescGZIP(), []int{34}
+}
+
+type AccessEntry struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Username      string                 `protobuf:"bytes,1,opt,name=username,proto3" json:"username,omitempty"`
+	PublicKey     []byte                 `protobuf:"bytes,2,opt,name=public_key,json=publicKey,proto3" json:"public_key,omitempty"`
+	Rights        uint32                 `protobuf:"varint,3,opt,name=rights,proto3" json:"rights,omitempty"`
+	ExpiresAt     int64                  `protobuf:"varint,4,opt,name=expires_at,json=expiresAt,proto3" json:"expires_at,omitempty"` // 0 = sans limite
+	GrantedBy     string                 `protobuf:"bytes,5,opt,name=granted_by,json=grantedBy,proto3" json:"granted_by,omitempty"`  // utilisateur qui a signé l'autorisation
+	GrantedAt     int64                  `protobuf:"varint,6,opt,name=granted_at,json=grantedAt,proto3" json:"granted_at,omitempty"`
+	Owner         bool                   `protobuf:"varint,7,opt,name=owner,proto3" json:"owner,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *AccessEntry) Reset() {
+	*x = AccessEntry{}
+	mi := &file_coordinator_proto_msgTypes[35]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *AccessEntry) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*AccessEntry) ProtoMessage() {}
+
+func (x *AccessEntry) ProtoReflect() protoreflect.Message {
+	mi := &file_coordinator_proto_msgTypes[35]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use AccessEntry.ProtoReflect.Descriptor instead.
+func (*AccessEntry) Descriptor() ([]byte, []int) {
+	return file_coordinator_proto_rawDescGZIP(), []int{35}
+}
+
+func (x *AccessEntry) GetUsername() string {
+	if x != nil {
+		return x.Username
+	}
+	return ""
+}
+
+func (x *AccessEntry) GetPublicKey() []byte {
+	if x != nil {
+		return x.PublicKey
+	}
+	return nil
+}
+
+func (x *AccessEntry) GetRights() uint32 {
+	if x != nil {
+		return x.Rights
+	}
+	return 0
+}
+
+func (x *AccessEntry) GetExpiresAt() int64 {
+	if x != nil {
+		return x.ExpiresAt
+	}
+	return 0
+}
+
+func (x *AccessEntry) GetGrantedBy() string {
+	if x != nil {
+		return x.GrantedBy
+	}
+	return ""
+}
+
+func (x *AccessEntry) GetGrantedAt() int64 {
+	if x != nil {
+		return x.GrantedAt
+	}
+	return 0
+}
+
+func (x *AccessEntry) GetOwner() bool {
+	if x != nil {
+		return x.Owner
+	}
+	return false
+}
+
+type ListAccessRequest struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	FileId        string                 `protobuf:"bytes,1,opt,name=file_id,json=fileId,proto3" json:"file_id,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *ListAccessRequest) Reset() {
+	*x = ListAccessRequest{}
+	mi := &file_coordinator_proto_msgTypes[36]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *ListAccessRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*ListAccessRequest) ProtoMessage() {}
+
+func (x *ListAccessRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_coordinator_proto_msgTypes[36]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use ListAccessRequest.ProtoReflect.Descriptor instead.
+func (*ListAccessRequest) Descriptor() ([]byte, []int) {
+	return file_coordinator_proto_rawDescGZIP(), []int{36}
+}
+
+func (x *ListAccessRequest) GetFileId() string {
+	if x != nil {
+		return x.FileId
+	}
+	return ""
+}
+
+type ListAccessResponse struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Entries       []*AccessEntry         `protobuf:"bytes,1,rep,name=entries,proto3" json:"entries,omitempty"` // le propriétaire d'abord
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *ListAccessResponse) Reset() {
+	*x = ListAccessResponse{}
+	mi := &file_coordinator_proto_msgTypes[37]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *ListAccessResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*ListAccessResponse) ProtoMessage() {}
+
+func (x *ListAccessResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_coordinator_proto_msgTypes[37]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use ListAccessResponse.ProtoReflect.Descriptor instead.
+func (*ListAccessResponse) Descriptor() ([]byte, []int) {
+	return file_coordinator_proto_rawDescGZIP(), []int{37}
+}
+
+func (x *ListAccessResponse) GetEntries() []*AccessEntry {
+	if x != nil {
+		return x.Entries
+	}
+	return nil
+}
+
+type GroupMember struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Username      string                 `protobuf:"bytes,1,opt,name=username,proto3" json:"username,omitempty"`
+	PublicKey     []byte                 `protobuf:"bytes,2,opt,name=public_key,json=publicKey,proto3" json:"public_key,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *GroupMember) Reset() {
+	*x = GroupMember{}
+	mi := &file_coordinator_proto_msgTypes[38]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *GroupMember) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*GroupMember) ProtoMessage() {}
+
+func (x *GroupMember) ProtoReflect() protoreflect.Message {
+	mi := &file_coordinator_proto_msgTypes[38]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use GroupMember.ProtoReflect.Descriptor instead.
+func (*GroupMember) Descriptor() ([]byte, []int) {
+	return file_coordinator_proto_rawDescGZIP(), []int{38}
+}
+
+func (x *GroupMember) GetUsername() string {
+	if x != nil {
+		return x.Username
+	}
+	return ""
+}
+
+func (x *GroupMember) GetPublicKey() []byte {
+	if x != nil {
+		return x.PublicKey
+	}
+	return nil
+}
+
+type GroupInfo struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Name          string                 `protobuf:"bytes,1,opt,name=name,proto3" json:"name,omitempty"`
+	Owner         string                 `protobuf:"bytes,2,opt,name=owner,proto3" json:"owner,omitempty"`
+	Members       []*GroupMember         `protobuf:"bytes,3,rep,name=members,proto3" json:"members,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *GroupInfo) Reset() {
+	*x = GroupInfo{}
+	mi := &file_coordinator_proto_msgTypes[39]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *GroupInfo) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*GroupInfo) ProtoMessage() {}
+
+func (x *GroupInfo) ProtoReflect() protoreflect.Message {
+	mi := &file_coordinator_proto_msgTypes[39]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use GroupInfo.ProtoReflect.Descriptor instead.
+func (*GroupInfo) Descriptor() ([]byte, []int) {
+	return file_coordinator_proto_rawDescGZIP(), []int{39}
+}
+
+func (x *GroupInfo) GetName() string {
+	if x != nil {
+		return x.Name
+	}
+	return ""
+}
+
+func (x *GroupInfo) GetOwner() string {
+	if x != nil {
+		return x.Owner
+	}
+	return ""
+}
+
+func (x *GroupInfo) GetMembers() []*GroupMember {
+	if x != nil {
+		return x.Members
+	}
+	return nil
+}
+
+type CreateGroupRequest struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Name          string                 `protobuf:"bytes,1,opt,name=name,proto3" json:"name,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *CreateGroupRequest) Reset() {
+	*x = CreateGroupRequest{}
+	mi := &file_coordinator_proto_msgTypes[40]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *CreateGroupRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*CreateGroupRequest) ProtoMessage() {}
+
+func (x *CreateGroupRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_coordinator_proto_msgTypes[40]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use CreateGroupRequest.ProtoReflect.Descriptor instead.
+func (*CreateGroupRequest) Descriptor() ([]byte, []int) {
+	return file_coordinator_proto_rawDescGZIP(), []int{40}
+}
+
+func (x *CreateGroupRequest) GetName() string {
+	if x != nil {
+		return x.Name
+	}
+	return ""
+}
+
+type CreateGroupResponse struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *CreateGroupResponse) Reset() {
+	*x = CreateGroupResponse{}
+	mi := &file_coordinator_proto_msgTypes[41]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *CreateGroupResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*CreateGroupResponse) ProtoMessage() {}
+
+func (x *CreateGroupResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_coordinator_proto_msgTypes[41]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use CreateGroupResponse.ProtoReflect.Descriptor instead.
+func (*CreateGroupResponse) Descriptor() ([]byte, []int) {
+	return file_coordinator_proto_rawDescGZIP(), []int{41}
+}
+
+type DeleteGroupRequest struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Name          string                 `protobuf:"bytes,1,opt,name=name,proto3" json:"name,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *DeleteGroupRequest) Reset() {
+	*x = DeleteGroupRequest{}
+	mi := &file_coordinator_proto_msgTypes[42]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *DeleteGroupRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*DeleteGroupRequest) ProtoMessage() {}
+
+func (x *DeleteGroupRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_coordinator_proto_msgTypes[42]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use DeleteGroupRequest.ProtoReflect.Descriptor instead.
+func (*DeleteGroupRequest) Descriptor() ([]byte, []int) {
+	return file_coordinator_proto_rawDescGZIP(), []int{42}
+}
+
+func (x *DeleteGroupRequest) GetName() string {
+	if x != nil {
+		return x.Name
+	}
+	return ""
+}
+
+type DeleteGroupResponse struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *DeleteGroupResponse) Reset() {
+	*x = DeleteGroupResponse{}
+	mi := &file_coordinator_proto_msgTypes[43]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *DeleteGroupResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*DeleteGroupResponse) ProtoMessage() {}
+
+func (x *DeleteGroupResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_coordinator_proto_msgTypes[43]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use DeleteGroupResponse.ProtoReflect.Descriptor instead.
+func (*DeleteGroupResponse) Descriptor() ([]byte, []int) {
+	return file_coordinator_proto_rawDescGZIP(), []int{43}
+}
+
+type GroupMemberRequest struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Group         string                 `protobuf:"bytes,1,opt,name=group,proto3" json:"group,omitempty"`
+	Username      string                 `protobuf:"bytes,2,opt,name=username,proto3" json:"username,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *GroupMemberRequest) Reset() {
+	*x = GroupMemberRequest{}
+	mi := &file_coordinator_proto_msgTypes[44]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *GroupMemberRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*GroupMemberRequest) ProtoMessage() {}
+
+func (x *GroupMemberRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_coordinator_proto_msgTypes[44]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use GroupMemberRequest.ProtoReflect.Descriptor instead.
+func (*GroupMemberRequest) Descriptor() ([]byte, []int) {
+	return file_coordinator_proto_rawDescGZIP(), []int{44}
+}
+
+func (x *GroupMemberRequest) GetGroup() string {
+	if x != nil {
+		return x.Group
+	}
+	return ""
+}
+
+func (x *GroupMemberRequest) GetUsername() string {
+	if x != nil {
+		return x.Username
+	}
+	return ""
+}
+
+type GroupMemberResponse struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *GroupMemberResponse) Reset() {
+	*x = GroupMemberResponse{}
+	mi := &file_coordinator_proto_msgTypes[45]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *GroupMemberResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*GroupMemberResponse) ProtoMessage() {}
+
+func (x *GroupMemberResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_coordinator_proto_msgTypes[45]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use GroupMemberResponse.ProtoReflect.Descriptor instead.
+func (*GroupMemberResponse) Descriptor() ([]byte, []int) {
+	return file_coordinator_proto_rawDescGZIP(), []int{45}
+}
+
+type ListGroupsRequest struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *ListGroupsRequest) Reset() {
+	*x = ListGroupsRequest{}
+	mi := &file_coordinator_proto_msgTypes[46]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *ListGroupsRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*ListGroupsRequest) ProtoMessage() {}
+
+func (x *ListGroupsRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_coordinator_proto_msgTypes[46]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use ListGroupsRequest.ProtoReflect.Descriptor instead.
+func (*ListGroupsRequest) Descriptor() ([]byte, []int) {
+	return file_coordinator_proto_rawDescGZIP(), []int{46}
+}
+
+type ListGroupsResponse struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Groups        []*GroupInfo           `protobuf:"bytes,1,rep,name=groups,proto3" json:"groups,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *ListGroupsResponse) Reset() {
+	*x = ListGroupsResponse{}
+	mi := &file_coordinator_proto_msgTypes[47]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *ListGroupsResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*ListGroupsResponse) ProtoMessage() {}
+
+func (x *ListGroupsResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_coordinator_proto_msgTypes[47]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use ListGroupsResponse.ProtoReflect.Descriptor instead.
+func (*ListGroupsResponse) Descriptor() ([]byte, []int) {
+	return file_coordinator_proto_rawDescGZIP(), []int{47}
+}
+
+func (x *ListGroupsResponse) GetGroups() []*GroupInfo {
+	if x != nil {
+		return x.Groups
+	}
+	return nil
 }
 
 var File_coordinator_proto protoreflect.FileDescriptor
@@ -1236,34 +2549,80 @@ const file_coordinator_proto_rawDesc = "" +
 	"\x04size\x18\x04 \x01(\x04R\x04size\"N\n" +
 	"\x11CreateFileRequest\x12%\n" +
 	"\x0eencrypted_name\x18\x01 \x01(\fR\rencryptedName\x12\x12\n" +
-	"\x04size\x18\x02 \x01(\x04R\x04size\"\x8a\x01\n" +
+	"\x04size\x18\x02 \x01(\x04R\x04size\"\xa4\x01\n" +
 	"\x12CreateFileResponse\x12\x17\n" +
 	"\afile_id\x18\x01 \x01(\tR\x06fileId\x12\x14\n" +
 	"\x05epoch\x18\x02 \x01(\x04R\x05epoch\x12)\n" +
 	"\x05nodes\x18\x03 \x03(\v2\x13.safevault.NodeInfoR\x05nodes\x12\f\n" +
 	"\x01t\x18\x04 \x01(\rR\x01t\x12\f\n" +
-	"\x01n\x18\x05 \x01(\rR\x01n\"`\n" +
+	"\x01n\x18\x05 \x01(\rR\x01n\x12\x18\n" +
+	"\aversion\x18\x06 \x01(\rR\aversion\"C\n" +
+	"\x14CreateVersionRequest\x12\x17\n" +
+	"\afile_id\x18\x01 \x01(\tR\x06fileId\x12\x12\n" +
+	"\x04size\x18\x02 \x01(\x04R\x04size\"\x8e\x01\n" +
+	"\x15CreateVersionResponse\x12\x18\n" +
+	"\aversion\x18\x01 \x01(\rR\aversion\x12\x14\n" +
+	"\x05epoch\x18\x02 \x01(\x04R\x05epoch\x12)\n" +
+	"\x05nodes\x18\x03 \x03(\v2\x13.safevault.NodeInfoR\x05nodes\x12\f\n" +
+	"\x01t\x18\x04 \x01(\rR\x01t\x12\f\n" +
+	"\x01n\x18\x05 \x01(\rR\x01n\"z\n" +
 	"\x14ConfirmUploadRequest\x12\x17\n" +
 	"\afile_id\x18\x01 \x01(\tR\x06fileId\x12/\n" +
-	"\bmanifest\x18\x02 \x01(\v2\x13.safevault.ManifestR\bmanifest\"\x17\n" +
+	"\bmanifest\x18\x02 \x01(\v2\x13.safevault.ManifestR\bmanifest\x12\x18\n" +
+	"\aversion\x18\x03 \x01(\rR\aversion\"\x17\n" +
 	"\x15ConfirmUploadResponse\"\x12\n" +
-	"\x10ListFilesRequest\"\x8c\x01\n" +
+	"\x10ListFilesRequest\"\xfe\x01\n" +
 	"\bFileInfo\x12\x17\n" +
 	"\afile_id\x18\x01 \x01(\tR\x06fileId\x12%\n" +
 	"\x0eencrypted_name\x18\x02 \x01(\fR\rencryptedName\x12\x12\n" +
 	"\x04size\x18\x03 \x01(\x04R\x04size\x12\x14\n" +
 	"\x05owner\x18\x04 \x01(\tR\x05owner\x12\x16\n" +
-	"\x06shared\x18\x05 \x01(\bR\x06shared\">\n" +
+	"\x06shared\x18\x05 \x01(\bR\x06shared\x12\x16\n" +
+	"\x06rights\x18\x06 \x01(\rR\x06rights\x12\x18\n" +
+	"\aversion\x18\a \x01(\rR\aversion\x12\x1f\n" +
+	"\vmodified_at\x18\b \x01(\x03R\n" +
+	"modifiedAt\x12\x1d\n" +
+	"\n" +
+	"expires_at\x18\t \x01(\x03R\texpiresAt\">\n" +
 	"\x11ListFilesResponse\x12)\n" +
-	"\x05files\x18\x01 \x03(\v2\x13.safevault.FileInfoR\x05files\")\n" +
+	"\x05files\x18\x01 \x03(\v2\x13.safevault.FileInfoR\x05files\"C\n" +
 	"\x0eGetFileRequest\x12\x17\n" +
-	"\afile_id\x18\x01 \x01(\tR\x06fileId\"\xb9\x01\n" +
+	"\afile_id\x18\x01 \x01(\tR\x06fileId\x12\x18\n" +
+	"\aversion\x18\x02 \x01(\rR\aversion\"\x94\x02\n" +
 	"\x0fGetFileResponse\x12\x14\n" +
 	"\x05epoch\x18\x01 \x01(\x04R\x05epoch\x12\f\n" +
 	"\x01t\x18\x02 \x01(\rR\x01t\x12/\n" +
 	"\bmanifest\x18\x03 \x01(\v2\x13.safevault.ManifestR\bmanifest\x12)\n" +
 	"\x05nodes\x18\x04 \x03(\v2\x13.safevault.NodeInfoR\x05nodes\x12&\n" +
-	"\x05grant\x18\x05 \x01(\v2\x10.safevault.GrantR\x05grant\"/\n" +
+	"\x05grant\x18\x05 \x01(\v2\x10.safevault.GrantR\x05grant\x12\x18\n" +
+	"\aversion\x18\x06 \x01(\rR\aversion\x12\x16\n" +
+	"\x06rights\x18\a \x01(\rR\x06rights\x12'\n" +
+	"\x0fcurrent_version\x18\b \x01(\rR\x0ecurrentVersion\"r\n" +
+	"\vVersionInfo\x12\x18\n" +
+	"\aversion\x18\x01 \x01(\rR\aversion\x12\x12\n" +
+	"\x04size\x18\x02 \x01(\x04R\x04size\x12\x16\n" +
+	"\x06author\x18\x03 \x01(\tR\x06author\x12\x1d\n" +
+	"\n" +
+	"created_at\x18\x04 \x01(\x03R\tcreatedAt\".\n" +
+	"\x13ListVersionsRequest\x12\x17\n" +
+	"\afile_id\x18\x01 \x01(\tR\x06fileId\"J\n" +
+	"\x14ListVersionsResponse\x122\n" +
+	"\bversions\x18\x01 \x03(\v2\x16.safevault.VersionInfoR\bversions\"M\n" +
+	"\bUserName\x12\x1a\n" +
+	"\busername\x18\x01 \x01(\tR\busername\x12%\n" +
+	"\x0eencrypted_name\x18\x02 \x01(\fR\rencryptedName\"W\n" +
+	"\x11RenameFileRequest\x12\x17\n" +
+	"\afile_id\x18\x01 \x01(\tR\x06fileId\x12)\n" +
+	"\x05names\x18\x02 \x03(\v2\x13.safevault.UserNameR\x05names\"\x14\n" +
+	"\x12RenameFileResponse\",\n" +
+	"\x11RemoveFileRequest\x12\x17\n" +
+	"\afile_id\x18\x01 \x01(\tR\x06fileId\"\x14\n" +
+	"\x12RemoveFileResponse\"\x8a\x01\n" +
+	"\x13TransferFileRequest\x12\x1b\n" +
+	"\tnew_owner\x18\x01 \x01(\tR\bnewOwner\x12/\n" +
+	"\btransfer\x18\x02 \x01(\v2\x13.safevault.TransferR\btransfer\x12%\n" +
+	"\x0eencrypted_name\x18\x03 \x01(\fR\rencryptedName\"\x16\n" +
+	"\x14TransferFileResponse\"/\n" +
 	"\x11GetUserKeyRequest\x12\x1a\n" +
 	"\busername\x18\x01 \x01(\tR\busername\"3\n" +
 	"\x12GetUserKeyResponse\x12\x1d\n" +
@@ -1273,24 +2632,79 @@ const file_coordinator_proto_rawDesc = "" +
 	"\agrantee\x18\x01 \x01(\tR\agrantee\x12&\n" +
 	"\x05grant\x18\x02 \x01(\v2\x10.safevault.GrantR\x05grant\x12%\n" +
 	"\x0eencrypted_name\x18\x03 \x01(\fR\rencryptedName\"\x13\n" +
-	"\x11ShareFileResponse\"G\n" +
+	"\x11ShareFileResponse\"~\n" +
 	"\x12RevokeShareRequest\x12\x17\n" +
 	"\afile_id\x18\x01 \x01(\tR\x06fileId\x12\x18\n" +
-	"\agrantee\x18\x02 \x01(\tR\agrantee\"\x15\n" +
-	"\x13RevokeShareResponse2\xe9\x05\n" +
+	"\agrantee\x18\x02 \x01(\tR\agrantee\x125\n" +
+	"\n" +
+	"revocation\x18\x03 \x01(\v2\x15.safevault.RevocationR\n" +
+	"revocation\"\x15\n" +
+	"\x13RevokeShareResponse\"\xd3\x01\n" +
+	"\vAccessEntry\x12\x1a\n" +
+	"\busername\x18\x01 \x01(\tR\busername\x12\x1d\n" +
+	"\n" +
+	"public_key\x18\x02 \x01(\fR\tpublicKey\x12\x16\n" +
+	"\x06rights\x18\x03 \x01(\rR\x06rights\x12\x1d\n" +
+	"\n" +
+	"expires_at\x18\x04 \x01(\x03R\texpiresAt\x12\x1d\n" +
+	"\n" +
+	"granted_by\x18\x05 \x01(\tR\tgrantedBy\x12\x1d\n" +
+	"\n" +
+	"granted_at\x18\x06 \x01(\x03R\tgrantedAt\x12\x14\n" +
+	"\x05owner\x18\a \x01(\bR\x05owner\",\n" +
+	"\x11ListAccessRequest\x12\x17\n" +
+	"\afile_id\x18\x01 \x01(\tR\x06fileId\"F\n" +
+	"\x12ListAccessResponse\x120\n" +
+	"\aentries\x18\x01 \x03(\v2\x16.safevault.AccessEntryR\aentries\"H\n" +
+	"\vGroupMember\x12\x1a\n" +
+	"\busername\x18\x01 \x01(\tR\busername\x12\x1d\n" +
+	"\n" +
+	"public_key\x18\x02 \x01(\fR\tpublicKey\"g\n" +
+	"\tGroupInfo\x12\x12\n" +
+	"\x04name\x18\x01 \x01(\tR\x04name\x12\x14\n" +
+	"\x05owner\x18\x02 \x01(\tR\x05owner\x120\n" +
+	"\amembers\x18\x03 \x03(\v2\x16.safevault.GroupMemberR\amembers\"(\n" +
+	"\x12CreateGroupRequest\x12\x12\n" +
+	"\x04name\x18\x01 \x01(\tR\x04name\"\x15\n" +
+	"\x13CreateGroupResponse\"(\n" +
+	"\x12DeleteGroupRequest\x12\x12\n" +
+	"\x04name\x18\x01 \x01(\tR\x04name\"\x15\n" +
+	"\x13DeleteGroupResponse\"F\n" +
+	"\x12GroupMemberRequest\x12\x14\n" +
+	"\x05group\x18\x01 \x01(\tR\x05group\x12\x1a\n" +
+	"\busername\x18\x02 \x01(\tR\busername\"\x15\n" +
+	"\x13GroupMemberResponse\"\x13\n" +
+	"\x11ListGroupsRequest\"B\n" +
+	"\x12ListGroupsResponse\x12,\n" +
+	"\x06groups\x18\x01 \x03(\v2\x14.safevault.GroupInfoR\x06groups2\xcc\f\n" +
 	"\vCoordinator\x12C\n" +
 	"\bRegister\x12\x1a.safevault.RegisterRequest\x1a\x1b.safevault.RegisterResponse\x12O\n" +
 	"\fGetChallenge\x12\x1e.safevault.GetChallengeRequest\x1a\x1f.safevault.GetChallengeResponse\x12:\n" +
 	"\x05Login\x12\x17.safevault.LoginRequest\x1a\x18.safevault.LoginResponse\x12I\n" +
 	"\n" +
 	"CreateFile\x12\x1c.safevault.CreateFileRequest\x1a\x1d.safevault.CreateFileResponse\x12R\n" +
+	"\rCreateVersion\x12\x1f.safevault.CreateVersionRequest\x1a .safevault.CreateVersionResponse\x12R\n" +
 	"\rConfirmUpload\x12\x1f.safevault.ConfirmUploadRequest\x1a .safevault.ConfirmUploadResponse\x12F\n" +
 	"\tListFiles\x12\x1b.safevault.ListFilesRequest\x1a\x1c.safevault.ListFilesResponse\x12@\n" +
-	"\aGetFile\x12\x19.safevault.GetFileRequest\x1a\x1a.safevault.GetFileResponse\x12I\n" +
+	"\aGetFile\x12\x19.safevault.GetFileRequest\x1a\x1a.safevault.GetFileResponse\x12O\n" +
+	"\fListVersions\x12\x1e.safevault.ListVersionsRequest\x1a\x1f.safevault.ListVersionsResponse\x12I\n" +
+	"\n" +
+	"RenameFile\x12\x1c.safevault.RenameFileRequest\x1a\x1d.safevault.RenameFileResponse\x12I\n" +
+	"\n" +
+	"RemoveFile\x12\x1c.safevault.RemoveFileRequest\x1a\x1d.safevault.RemoveFileResponse\x12O\n" +
+	"\fTransferFile\x12\x1e.safevault.TransferFileRequest\x1a\x1f.safevault.TransferFileResponse\x12I\n" +
 	"\n" +
 	"GetUserKey\x12\x1c.safevault.GetUserKeyRequest\x1a\x1d.safevault.GetUserKeyResponse\x12F\n" +
 	"\tShareFile\x12\x1b.safevault.ShareFileRequest\x1a\x1c.safevault.ShareFileResponse\x12L\n" +
-	"\vRevokeShare\x12\x1d.safevault.RevokeShareRequest\x1a\x1e.safevault.RevokeShareResponseB\x14Z\x12safevault/proto;pbb\x06proto3"
+	"\vRevokeShare\x12\x1d.safevault.RevokeShareRequest\x1a\x1e.safevault.RevokeShareResponse\x12I\n" +
+	"\n" +
+	"ListAccess\x12\x1c.safevault.ListAccessRequest\x1a\x1d.safevault.ListAccessResponse\x12L\n" +
+	"\vCreateGroup\x12\x1d.safevault.CreateGroupRequest\x1a\x1e.safevault.CreateGroupResponse\x12L\n" +
+	"\vDeleteGroup\x12\x1d.safevault.DeleteGroupRequest\x1a\x1e.safevault.DeleteGroupResponse\x12O\n" +
+	"\x0eAddGroupMember\x12\x1d.safevault.GroupMemberRequest\x1a\x1e.safevault.GroupMemberResponse\x12R\n" +
+	"\x11RemoveGroupMember\x12\x1d.safevault.GroupMemberRequest\x1a\x1e.safevault.GroupMemberResponse\x12I\n" +
+	"\n" +
+	"ListGroups\x12\x1c.safevault.ListGroupsRequest\x1a\x1d.safevault.ListGroupsResponseB\x14Z\x12safevault/proto;pbb\x06proto3"
 
 var (
 	file_coordinator_proto_rawDescOnce sync.Once
@@ -1304,7 +2718,7 @@ func file_coordinator_proto_rawDescGZIP() []byte {
 	return file_coordinator_proto_rawDescData
 }
 
-var file_coordinator_proto_msgTypes = make([]protoimpl.MessageInfo, 23)
+var file_coordinator_proto_msgTypes = make([]protoimpl.MessageInfo, 48)
 var file_coordinator_proto_goTypes = []any{
 	(*RegisterRequest)(nil),       // 0: safevault.RegisterRequest
 	(*RegisterResponse)(nil),      // 1: safevault.RegisterResponse
@@ -1316,54 +2730,111 @@ var file_coordinator_proto_goTypes = []any{
 	(*Manifest)(nil),              // 7: safevault.Manifest
 	(*CreateFileRequest)(nil),     // 8: safevault.CreateFileRequest
 	(*CreateFileResponse)(nil),    // 9: safevault.CreateFileResponse
-	(*ConfirmUploadRequest)(nil),  // 10: safevault.ConfirmUploadRequest
-	(*ConfirmUploadResponse)(nil), // 11: safevault.ConfirmUploadResponse
-	(*ListFilesRequest)(nil),      // 12: safevault.ListFilesRequest
-	(*FileInfo)(nil),              // 13: safevault.FileInfo
-	(*ListFilesResponse)(nil),     // 14: safevault.ListFilesResponse
-	(*GetFileRequest)(nil),        // 15: safevault.GetFileRequest
-	(*GetFileResponse)(nil),       // 16: safevault.GetFileResponse
-	(*GetUserKeyRequest)(nil),     // 17: safevault.GetUserKeyRequest
-	(*GetUserKeyResponse)(nil),    // 18: safevault.GetUserKeyResponse
-	(*ShareFileRequest)(nil),      // 19: safevault.ShareFileRequest
-	(*ShareFileResponse)(nil),     // 20: safevault.ShareFileResponse
-	(*RevokeShareRequest)(nil),    // 21: safevault.RevokeShareRequest
-	(*RevokeShareResponse)(nil),   // 22: safevault.RevokeShareResponse
-	(*Grant)(nil),                 // 23: safevault.Grant
+	(*CreateVersionRequest)(nil),  // 10: safevault.CreateVersionRequest
+	(*CreateVersionResponse)(nil), // 11: safevault.CreateVersionResponse
+	(*ConfirmUploadRequest)(nil),  // 12: safevault.ConfirmUploadRequest
+	(*ConfirmUploadResponse)(nil), // 13: safevault.ConfirmUploadResponse
+	(*ListFilesRequest)(nil),      // 14: safevault.ListFilesRequest
+	(*FileInfo)(nil),              // 15: safevault.FileInfo
+	(*ListFilesResponse)(nil),     // 16: safevault.ListFilesResponse
+	(*GetFileRequest)(nil),        // 17: safevault.GetFileRequest
+	(*GetFileResponse)(nil),       // 18: safevault.GetFileResponse
+	(*VersionInfo)(nil),           // 19: safevault.VersionInfo
+	(*ListVersionsRequest)(nil),   // 20: safevault.ListVersionsRequest
+	(*ListVersionsResponse)(nil),  // 21: safevault.ListVersionsResponse
+	(*UserName)(nil),              // 22: safevault.UserName
+	(*RenameFileRequest)(nil),     // 23: safevault.RenameFileRequest
+	(*RenameFileResponse)(nil),    // 24: safevault.RenameFileResponse
+	(*RemoveFileRequest)(nil),     // 25: safevault.RemoveFileRequest
+	(*RemoveFileResponse)(nil),    // 26: safevault.RemoveFileResponse
+	(*TransferFileRequest)(nil),   // 27: safevault.TransferFileRequest
+	(*TransferFileResponse)(nil),  // 28: safevault.TransferFileResponse
+	(*GetUserKeyRequest)(nil),     // 29: safevault.GetUserKeyRequest
+	(*GetUserKeyResponse)(nil),    // 30: safevault.GetUserKeyResponse
+	(*ShareFileRequest)(nil),      // 31: safevault.ShareFileRequest
+	(*ShareFileResponse)(nil),     // 32: safevault.ShareFileResponse
+	(*RevokeShareRequest)(nil),    // 33: safevault.RevokeShareRequest
+	(*RevokeShareResponse)(nil),   // 34: safevault.RevokeShareResponse
+	(*AccessEntry)(nil),           // 35: safevault.AccessEntry
+	(*ListAccessRequest)(nil),     // 36: safevault.ListAccessRequest
+	(*ListAccessResponse)(nil),    // 37: safevault.ListAccessResponse
+	(*GroupMember)(nil),           // 38: safevault.GroupMember
+	(*GroupInfo)(nil),             // 39: safevault.GroupInfo
+	(*CreateGroupRequest)(nil),    // 40: safevault.CreateGroupRequest
+	(*CreateGroupResponse)(nil),   // 41: safevault.CreateGroupResponse
+	(*DeleteGroupRequest)(nil),    // 42: safevault.DeleteGroupRequest
+	(*DeleteGroupResponse)(nil),   // 43: safevault.DeleteGroupResponse
+	(*GroupMemberRequest)(nil),    // 44: safevault.GroupMemberRequest
+	(*GroupMemberResponse)(nil),   // 45: safevault.GroupMemberResponse
+	(*ListGroupsRequest)(nil),     // 46: safevault.ListGroupsRequest
+	(*ListGroupsResponse)(nil),    // 47: safevault.ListGroupsResponse
+	(*Grant)(nil),                 // 48: safevault.Grant
+	(*Transfer)(nil),              // 49: safevault.Transfer
+	(*Revocation)(nil),            // 50: safevault.Revocation
 }
 var file_coordinator_proto_depIdxs = []int32{
 	6,  // 0: safevault.CreateFileResponse.nodes:type_name -> safevault.NodeInfo
-	7,  // 1: safevault.ConfirmUploadRequest.manifest:type_name -> safevault.Manifest
-	13, // 2: safevault.ListFilesResponse.files:type_name -> safevault.FileInfo
-	7,  // 3: safevault.GetFileResponse.manifest:type_name -> safevault.Manifest
-	6,  // 4: safevault.GetFileResponse.nodes:type_name -> safevault.NodeInfo
-	23, // 5: safevault.GetFileResponse.grant:type_name -> safevault.Grant
-	23, // 6: safevault.ShareFileRequest.grant:type_name -> safevault.Grant
-	0,  // 7: safevault.Coordinator.Register:input_type -> safevault.RegisterRequest
-	2,  // 8: safevault.Coordinator.GetChallenge:input_type -> safevault.GetChallengeRequest
-	4,  // 9: safevault.Coordinator.Login:input_type -> safevault.LoginRequest
-	8,  // 10: safevault.Coordinator.CreateFile:input_type -> safevault.CreateFileRequest
-	10, // 11: safevault.Coordinator.ConfirmUpload:input_type -> safevault.ConfirmUploadRequest
-	12, // 12: safevault.Coordinator.ListFiles:input_type -> safevault.ListFilesRequest
-	15, // 13: safevault.Coordinator.GetFile:input_type -> safevault.GetFileRequest
-	17, // 14: safevault.Coordinator.GetUserKey:input_type -> safevault.GetUserKeyRequest
-	19, // 15: safevault.Coordinator.ShareFile:input_type -> safevault.ShareFileRequest
-	21, // 16: safevault.Coordinator.RevokeShare:input_type -> safevault.RevokeShareRequest
-	1,  // 17: safevault.Coordinator.Register:output_type -> safevault.RegisterResponse
-	3,  // 18: safevault.Coordinator.GetChallenge:output_type -> safevault.GetChallengeResponse
-	5,  // 19: safevault.Coordinator.Login:output_type -> safevault.LoginResponse
-	9,  // 20: safevault.Coordinator.CreateFile:output_type -> safevault.CreateFileResponse
-	11, // 21: safevault.Coordinator.ConfirmUpload:output_type -> safevault.ConfirmUploadResponse
-	14, // 22: safevault.Coordinator.ListFiles:output_type -> safevault.ListFilesResponse
-	16, // 23: safevault.Coordinator.GetFile:output_type -> safevault.GetFileResponse
-	18, // 24: safevault.Coordinator.GetUserKey:output_type -> safevault.GetUserKeyResponse
-	20, // 25: safevault.Coordinator.ShareFile:output_type -> safevault.ShareFileResponse
-	22, // 26: safevault.Coordinator.RevokeShare:output_type -> safevault.RevokeShareResponse
-	17, // [17:27] is the sub-list for method output_type
-	7,  // [7:17] is the sub-list for method input_type
-	7,  // [7:7] is the sub-list for extension type_name
-	7,  // [7:7] is the sub-list for extension extendee
-	0,  // [0:7] is the sub-list for field type_name
+	6,  // 1: safevault.CreateVersionResponse.nodes:type_name -> safevault.NodeInfo
+	7,  // 2: safevault.ConfirmUploadRequest.manifest:type_name -> safevault.Manifest
+	15, // 3: safevault.ListFilesResponse.files:type_name -> safevault.FileInfo
+	7,  // 4: safevault.GetFileResponse.manifest:type_name -> safevault.Manifest
+	6,  // 5: safevault.GetFileResponse.nodes:type_name -> safevault.NodeInfo
+	48, // 6: safevault.GetFileResponse.grant:type_name -> safevault.Grant
+	19, // 7: safevault.ListVersionsResponse.versions:type_name -> safevault.VersionInfo
+	22, // 8: safevault.RenameFileRequest.names:type_name -> safevault.UserName
+	49, // 9: safevault.TransferFileRequest.transfer:type_name -> safevault.Transfer
+	48, // 10: safevault.ShareFileRequest.grant:type_name -> safevault.Grant
+	50, // 11: safevault.RevokeShareRequest.revocation:type_name -> safevault.Revocation
+	35, // 12: safevault.ListAccessResponse.entries:type_name -> safevault.AccessEntry
+	38, // 13: safevault.GroupInfo.members:type_name -> safevault.GroupMember
+	39, // 14: safevault.ListGroupsResponse.groups:type_name -> safevault.GroupInfo
+	0,  // 15: safevault.Coordinator.Register:input_type -> safevault.RegisterRequest
+	2,  // 16: safevault.Coordinator.GetChallenge:input_type -> safevault.GetChallengeRequest
+	4,  // 17: safevault.Coordinator.Login:input_type -> safevault.LoginRequest
+	8,  // 18: safevault.Coordinator.CreateFile:input_type -> safevault.CreateFileRequest
+	10, // 19: safevault.Coordinator.CreateVersion:input_type -> safevault.CreateVersionRequest
+	12, // 20: safevault.Coordinator.ConfirmUpload:input_type -> safevault.ConfirmUploadRequest
+	14, // 21: safevault.Coordinator.ListFiles:input_type -> safevault.ListFilesRequest
+	17, // 22: safevault.Coordinator.GetFile:input_type -> safevault.GetFileRequest
+	20, // 23: safevault.Coordinator.ListVersions:input_type -> safevault.ListVersionsRequest
+	23, // 24: safevault.Coordinator.RenameFile:input_type -> safevault.RenameFileRequest
+	25, // 25: safevault.Coordinator.RemoveFile:input_type -> safevault.RemoveFileRequest
+	27, // 26: safevault.Coordinator.TransferFile:input_type -> safevault.TransferFileRequest
+	29, // 27: safevault.Coordinator.GetUserKey:input_type -> safevault.GetUserKeyRequest
+	31, // 28: safevault.Coordinator.ShareFile:input_type -> safevault.ShareFileRequest
+	33, // 29: safevault.Coordinator.RevokeShare:input_type -> safevault.RevokeShareRequest
+	36, // 30: safevault.Coordinator.ListAccess:input_type -> safevault.ListAccessRequest
+	40, // 31: safevault.Coordinator.CreateGroup:input_type -> safevault.CreateGroupRequest
+	42, // 32: safevault.Coordinator.DeleteGroup:input_type -> safevault.DeleteGroupRequest
+	44, // 33: safevault.Coordinator.AddGroupMember:input_type -> safevault.GroupMemberRequest
+	44, // 34: safevault.Coordinator.RemoveGroupMember:input_type -> safevault.GroupMemberRequest
+	46, // 35: safevault.Coordinator.ListGroups:input_type -> safevault.ListGroupsRequest
+	1,  // 36: safevault.Coordinator.Register:output_type -> safevault.RegisterResponse
+	3,  // 37: safevault.Coordinator.GetChallenge:output_type -> safevault.GetChallengeResponse
+	5,  // 38: safevault.Coordinator.Login:output_type -> safevault.LoginResponse
+	9,  // 39: safevault.Coordinator.CreateFile:output_type -> safevault.CreateFileResponse
+	11, // 40: safevault.Coordinator.CreateVersion:output_type -> safevault.CreateVersionResponse
+	13, // 41: safevault.Coordinator.ConfirmUpload:output_type -> safevault.ConfirmUploadResponse
+	16, // 42: safevault.Coordinator.ListFiles:output_type -> safevault.ListFilesResponse
+	18, // 43: safevault.Coordinator.GetFile:output_type -> safevault.GetFileResponse
+	21, // 44: safevault.Coordinator.ListVersions:output_type -> safevault.ListVersionsResponse
+	24, // 45: safevault.Coordinator.RenameFile:output_type -> safevault.RenameFileResponse
+	26, // 46: safevault.Coordinator.RemoveFile:output_type -> safevault.RemoveFileResponse
+	28, // 47: safevault.Coordinator.TransferFile:output_type -> safevault.TransferFileResponse
+	30, // 48: safevault.Coordinator.GetUserKey:output_type -> safevault.GetUserKeyResponse
+	32, // 49: safevault.Coordinator.ShareFile:output_type -> safevault.ShareFileResponse
+	34, // 50: safevault.Coordinator.RevokeShare:output_type -> safevault.RevokeShareResponse
+	37, // 51: safevault.Coordinator.ListAccess:output_type -> safevault.ListAccessResponse
+	41, // 52: safevault.Coordinator.CreateGroup:output_type -> safevault.CreateGroupResponse
+	43, // 53: safevault.Coordinator.DeleteGroup:output_type -> safevault.DeleteGroupResponse
+	45, // 54: safevault.Coordinator.AddGroupMember:output_type -> safevault.GroupMemberResponse
+	45, // 55: safevault.Coordinator.RemoveGroupMember:output_type -> safevault.GroupMemberResponse
+	47, // 56: safevault.Coordinator.ListGroups:output_type -> safevault.ListGroupsResponse
+	36, // [36:57] is the sub-list for method output_type
+	15, // [15:36] is the sub-list for method input_type
+	15, // [15:15] is the sub-list for extension type_name
+	15, // [15:15] is the sub-list for extension extendee
+	0,  // [0:15] is the sub-list for field type_name
 }
 
 func init() { file_coordinator_proto_init() }
@@ -1378,7 +2849,7 @@ func file_coordinator_proto_init() {
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_coordinator_proto_rawDesc), len(file_coordinator_proto_rawDesc)),
 			NumEnums:      0,
-			NumMessages:   23,
+			NumMessages:   48,
 			NumExtensions: 0,
 			NumServices:   1,
 		},

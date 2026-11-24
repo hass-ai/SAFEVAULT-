@@ -22,50 +22,69 @@ message Share {
   uint64 epoch = 3;
 }
 
-// Bloc chiffré d'un fichier.
+// Bloc chiffré d'une version d'un fichier.
 message Block {
   string file_id = 1;
   uint32 index = 2;
   bytes data = 3;
   Proof proof = 4;
+  uint32 version = 5;  // version du fichier (1 au premier dépôt)
+  Grant grant = 6;     // autorisation d'écriture (w), absente pour le propriétaire
 }
 
 message PutShareRequest {
   string file_id = 1;
   Share share = 2;
   Proof proof = 3;
+  uint32 version = 4;  // version du fichier (1 au premier dépôt)
+  Grant grant = 5;     // autorisation d'écriture (w), absente pour le propriétaire
 }
 
 message PutShareResponse {}
 
-// Autorisation de lecture d'un fichier, signée par son propriétaire (Ed25519).
-// Les nœuds la vérifient avec la clé du propriétaire qu'ils ont enregistrée au dépôt :
-// le coordinateur la transmet mais ne peut pas la fabriquer.
-// Données signées : voir internal/access.
+// Autorisation sur un fichier, signée par son émetteur (Ed25519) : le propriétaire, ou
+// un utilisateur qui a reçu le droit de partager (s) ou de gérer (m) et qui joint alors
+// sa propre autorisation (parent). Les nœuds vérifient toute la chaîne jusqu'à la clé du
+// propriétaire enregistrée au dépôt. Données signées : voir internal/access.
 message Grant {
   string file_id = 1;
-  bytes owner_public_key = 2;
+  bytes issuer_public_key = 2;
   bytes grantee_public_key = 3;
-  int64 issued_at = 4;  // secondes Unix
-  int64 expires_at = 5; // secondes Unix
-  bytes signature = 6;
+  int64 issued_at = 4;   // secondes Unix
+  int64 expires_at = 5;  // secondes Unix, 0 = sans limite
+  uint32 rights = 6;     // r = 1, w = 2, s = 4, d = 8, m = 16
+  bytes signature = 7;
+  Grant parent = 8;      // autorisation de l'émetteur s'il n'est pas propriétaire
 }
 
-// Retrait d'un accès, signé par le propriétaire : les autorisations émises avant
-// revoked_at pour ce destinataire ne sont plus acceptées.
+// Retrait d'un accès, signé par le propriétaire ou par un utilisateur qui a le droit de
+// gérer les accès (authority) : les autorisations émises avant revoked_at pour cette clé,
+// et celles qui en découlent, ne sont plus acceptées.
 message Revocation {
   string file_id = 1;
-  bytes owner_public_key = 2;
+  bytes issuer_public_key = 2;
   bytes grantee_public_key = 3;
-  int64 revoked_at = 4; // secondes Unix
+  int64 revoked_at = 4;  // secondes Unix
+  bytes signature = 5;
+  Grant authority = 6;   // autorisation de l'émetteur (droit m) s'il n'est pas propriétaire
+}
+
+// Transfert de la propriété d'un fichier, signé par le propriétaire actuel. Les
+// autorisations qu'il a émises avant le transfert restent valables.
+message Transfer {
+  string file_id = 1;
+  bytes owner_public_key = 2;
+  bytes new_owner_public_key = 3;
+  int64 transferred_at = 4;  // secondes Unix
   bytes signature = 5;
 }
 
 message GetShareRequest {
   string file_id = 1;
-  uint64 epoch = 2; // époque attendue par le client
+  uint64 epoch = 2;    // époque attendue par le client
   Proof proof = 3;
-  Grant grant = 4;  // absent pour le propriétaire
+  Grant grant = 4;     // autorisation de lecture (r), absente pour le propriétaire
+  uint32 version = 5;
 }
 
 message GetShareResponse {
@@ -79,7 +98,8 @@ message PutBlocksResponse {
 message GetBlocksRequest {
   string file_id = 1;
   Proof proof = 2;
-  Grant grant = 3;  // absent pour le propriétaire
+  Grant grant = 3;     // autorisation de lecture (r), absente pour le propriétaire
+  uint32 version = 4;
 }
 
 message RevokeRequest {
@@ -88,17 +108,36 @@ message RevokeRequest {
 
 message RevokeResponse {}
 
+message DeleteFileRequest {
+  string file_id = 1;
+  Proof proof = 2;
+  Grant grant = 3;     // autorisation de suppression (d), absente pour le propriétaire
+}
+
+message DeleteFileResponse {}
+
+message TransferRequest {
+  Transfer transfer = 1;
+}
+
+message TransferResponse {}
+
 service Node {
-  // Dépose la part de la clé du fichier sur le nœud.
+  // Dépose la part de la clé d'une version du fichier sur le nœud. La version 1 fait du
+  // déposant le propriétaire ; une version suivante exige le droit d'écriture.
   rpc PutShare(PutShareRequest) returns (PutShareResponse);
   // Renvoie la part du nœud ; FAILED_PRECONDITION si l'époque ne correspond pas.
   rpc GetShare(GetShareRequest) returns (GetShareResponse);
-  // Reçoit les blocs chiffrés d'un fichier en flux.
+  // Reçoit les blocs chiffrés d'une version en flux.
   rpc PutBlocks(stream Block) returns (PutBlocksResponse);
-  // Renvoie les blocs chiffrés d'un fichier en flux.
+  // Renvoie les blocs chiffrés d'une version en flux.
   rpc GetBlocks(GetBlocksRequest) returns (stream Block);
-  // Enregistre le retrait d'un accès, signé par le propriétaire du fichier.
+  // Enregistre un retrait d'accès signé.
   rpc Revoke(RevokeRequest) returns (RevokeResponse);
+  // Efface toutes les versions du fichier (parts et blocs).
+  rpc DeleteFile(DeleteFileRequest) returns (DeleteFileResponse);
+  // Change le propriétaire du fichier.
+  rpc TransferOwnership(TransferRequest) returns (TransferResponse);
 }
 
 // Sous-part d'un fichier envoyée pendant un renouvellement.

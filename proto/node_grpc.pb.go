@@ -22,27 +22,34 @@ import (
 const _ = grpc.SupportPackageIsVersion9
 
 const (
-	Node_PutShare_FullMethodName  = "/safevault.Node/PutShare"
-	Node_GetShare_FullMethodName  = "/safevault.Node/GetShare"
-	Node_PutBlocks_FullMethodName = "/safevault.Node/PutBlocks"
-	Node_GetBlocks_FullMethodName = "/safevault.Node/GetBlocks"
-	Node_Revoke_FullMethodName    = "/safevault.Node/Revoke"
+	Node_PutShare_FullMethodName          = "/safevault.Node/PutShare"
+	Node_GetShare_FullMethodName          = "/safevault.Node/GetShare"
+	Node_PutBlocks_FullMethodName         = "/safevault.Node/PutBlocks"
+	Node_GetBlocks_FullMethodName         = "/safevault.Node/GetBlocks"
+	Node_Revoke_FullMethodName            = "/safevault.Node/Revoke"
+	Node_DeleteFile_FullMethodName        = "/safevault.Node/DeleteFile"
+	Node_TransferOwnership_FullMethodName = "/safevault.Node/TransferOwnership"
 )
 
 // NodeClient is the client API for Node service.
 //
 // For semantics around ctx use and closing/ending streaming RPCs, please refer to https://pkg.go.dev/google.golang.org/grpc/?tab=doc#ClientConn.NewStream.
 type NodeClient interface {
-	// Dépose la part de la clé du fichier sur le nœud.
+	// Dépose la part de la clé d'une version du fichier sur le nœud. La version 1 fait du
+	// déposant le propriétaire ; une version suivante exige le droit d'écriture.
 	PutShare(ctx context.Context, in *PutShareRequest, opts ...grpc.CallOption) (*PutShareResponse, error)
 	// Renvoie la part du nœud ; FAILED_PRECONDITION si l'époque ne correspond pas.
 	GetShare(ctx context.Context, in *GetShareRequest, opts ...grpc.CallOption) (*GetShareResponse, error)
-	// Reçoit les blocs chiffrés d'un fichier en flux.
+	// Reçoit les blocs chiffrés d'une version en flux.
 	PutBlocks(ctx context.Context, opts ...grpc.CallOption) (grpc.ClientStreamingClient[Block, PutBlocksResponse], error)
-	// Renvoie les blocs chiffrés d'un fichier en flux.
+	// Renvoie les blocs chiffrés d'une version en flux.
 	GetBlocks(ctx context.Context, in *GetBlocksRequest, opts ...grpc.CallOption) (grpc.ServerStreamingClient[Block], error)
-	// Enregistre le retrait d'un accès, signé par le propriétaire du fichier.
+	// Enregistre un retrait d'accès signé.
 	Revoke(ctx context.Context, in *RevokeRequest, opts ...grpc.CallOption) (*RevokeResponse, error)
+	// Efface toutes les versions du fichier (parts et blocs).
+	DeleteFile(ctx context.Context, in *DeleteFileRequest, opts ...grpc.CallOption) (*DeleteFileResponse, error)
+	// Change le propriétaire du fichier.
+	TransferOwnership(ctx context.Context, in *TransferRequest, opts ...grpc.CallOption) (*TransferResponse, error)
 }
 
 type nodeClient struct {
@@ -115,20 +122,45 @@ func (c *nodeClient) Revoke(ctx context.Context, in *RevokeRequest, opts ...grpc
 	return out, nil
 }
 
+func (c *nodeClient) DeleteFile(ctx context.Context, in *DeleteFileRequest, opts ...grpc.CallOption) (*DeleteFileResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(DeleteFileResponse)
+	err := c.cc.Invoke(ctx, Node_DeleteFile_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *nodeClient) TransferOwnership(ctx context.Context, in *TransferRequest, opts ...grpc.CallOption) (*TransferResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(TransferResponse)
+	err := c.cc.Invoke(ctx, Node_TransferOwnership_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 // NodeServer is the server API for Node service.
 // All implementations must embed UnimplementedNodeServer
 // for forward compatibility.
 type NodeServer interface {
-	// Dépose la part de la clé du fichier sur le nœud.
+	// Dépose la part de la clé d'une version du fichier sur le nœud. La version 1 fait du
+	// déposant le propriétaire ; une version suivante exige le droit d'écriture.
 	PutShare(context.Context, *PutShareRequest) (*PutShareResponse, error)
 	// Renvoie la part du nœud ; FAILED_PRECONDITION si l'époque ne correspond pas.
 	GetShare(context.Context, *GetShareRequest) (*GetShareResponse, error)
-	// Reçoit les blocs chiffrés d'un fichier en flux.
+	// Reçoit les blocs chiffrés d'une version en flux.
 	PutBlocks(grpc.ClientStreamingServer[Block, PutBlocksResponse]) error
-	// Renvoie les blocs chiffrés d'un fichier en flux.
+	// Renvoie les blocs chiffrés d'une version en flux.
 	GetBlocks(*GetBlocksRequest, grpc.ServerStreamingServer[Block]) error
-	// Enregistre le retrait d'un accès, signé par le propriétaire du fichier.
+	// Enregistre un retrait d'accès signé.
 	Revoke(context.Context, *RevokeRequest) (*RevokeResponse, error)
+	// Efface toutes les versions du fichier (parts et blocs).
+	DeleteFile(context.Context, *DeleteFileRequest) (*DeleteFileResponse, error)
+	// Change le propriétaire du fichier.
+	TransferOwnership(context.Context, *TransferRequest) (*TransferResponse, error)
 	mustEmbedUnimplementedNodeServer()
 }
 
@@ -153,6 +185,12 @@ func (UnimplementedNodeServer) GetBlocks(*GetBlocksRequest, grpc.ServerStreaming
 }
 func (UnimplementedNodeServer) Revoke(context.Context, *RevokeRequest) (*RevokeResponse, error) {
 	return nil, status.Error(codes.Unimplemented, "method Revoke not implemented")
+}
+func (UnimplementedNodeServer) DeleteFile(context.Context, *DeleteFileRequest) (*DeleteFileResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method DeleteFile not implemented")
+}
+func (UnimplementedNodeServer) TransferOwnership(context.Context, *TransferRequest) (*TransferResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method TransferOwnership not implemented")
 }
 func (UnimplementedNodeServer) mustEmbedUnimplementedNodeServer() {}
 func (UnimplementedNodeServer) testEmbeddedByValue()              {}
@@ -247,6 +285,42 @@ func _Node_Revoke_Handler(srv interface{}, ctx context.Context, dec func(interfa
 	return interceptor(ctx, in, info, handler)
 }
 
+func _Node_DeleteFile_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(DeleteFileRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(NodeServer).DeleteFile(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: Node_DeleteFile_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(NodeServer).DeleteFile(ctx, req.(*DeleteFileRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _Node_TransferOwnership_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(TransferRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(NodeServer).TransferOwnership(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: Node_TransferOwnership_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(NodeServer).TransferOwnership(ctx, req.(*TransferRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
 // Node_ServiceDesc is the grpc.ServiceDesc for Node service.
 // It's only intended for direct use with grpc.RegisterService,
 // and not to be introspected or modified (even as a copy)
@@ -265,6 +339,14 @@ var Node_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "Revoke",
 			Handler:    _Node_Revoke_Handler,
+		},
+		{
+			MethodName: "DeleteFile",
+			Handler:    _Node_DeleteFile_Handler,
+		},
+		{
+			MethodName: "TransferOwnership",
+			Handler:    _Node_TransferOwnership_Handler,
 		},
 	},
 	Streams: []grpc.StreamDesc{

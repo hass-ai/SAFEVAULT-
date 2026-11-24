@@ -21,16 +21,27 @@ import (
 const _ = grpc.SupportPackageIsVersion9
 
 const (
-	Coordinator_Register_FullMethodName      = "/safevault.Coordinator/Register"
-	Coordinator_GetChallenge_FullMethodName  = "/safevault.Coordinator/GetChallenge"
-	Coordinator_Login_FullMethodName         = "/safevault.Coordinator/Login"
-	Coordinator_CreateFile_FullMethodName    = "/safevault.Coordinator/CreateFile"
-	Coordinator_ConfirmUpload_FullMethodName = "/safevault.Coordinator/ConfirmUpload"
-	Coordinator_ListFiles_FullMethodName     = "/safevault.Coordinator/ListFiles"
-	Coordinator_GetFile_FullMethodName       = "/safevault.Coordinator/GetFile"
-	Coordinator_GetUserKey_FullMethodName    = "/safevault.Coordinator/GetUserKey"
-	Coordinator_ShareFile_FullMethodName     = "/safevault.Coordinator/ShareFile"
-	Coordinator_RevokeShare_FullMethodName   = "/safevault.Coordinator/RevokeShare"
+	Coordinator_Register_FullMethodName          = "/safevault.Coordinator/Register"
+	Coordinator_GetChallenge_FullMethodName      = "/safevault.Coordinator/GetChallenge"
+	Coordinator_Login_FullMethodName             = "/safevault.Coordinator/Login"
+	Coordinator_CreateFile_FullMethodName        = "/safevault.Coordinator/CreateFile"
+	Coordinator_CreateVersion_FullMethodName     = "/safevault.Coordinator/CreateVersion"
+	Coordinator_ConfirmUpload_FullMethodName     = "/safevault.Coordinator/ConfirmUpload"
+	Coordinator_ListFiles_FullMethodName         = "/safevault.Coordinator/ListFiles"
+	Coordinator_GetFile_FullMethodName           = "/safevault.Coordinator/GetFile"
+	Coordinator_ListVersions_FullMethodName      = "/safevault.Coordinator/ListVersions"
+	Coordinator_RenameFile_FullMethodName        = "/safevault.Coordinator/RenameFile"
+	Coordinator_RemoveFile_FullMethodName        = "/safevault.Coordinator/RemoveFile"
+	Coordinator_TransferFile_FullMethodName      = "/safevault.Coordinator/TransferFile"
+	Coordinator_GetUserKey_FullMethodName        = "/safevault.Coordinator/GetUserKey"
+	Coordinator_ShareFile_FullMethodName         = "/safevault.Coordinator/ShareFile"
+	Coordinator_RevokeShare_FullMethodName       = "/safevault.Coordinator/RevokeShare"
+	Coordinator_ListAccess_FullMethodName        = "/safevault.Coordinator/ListAccess"
+	Coordinator_CreateGroup_FullMethodName       = "/safevault.Coordinator/CreateGroup"
+	Coordinator_DeleteGroup_FullMethodName       = "/safevault.Coordinator/DeleteGroup"
+	Coordinator_AddGroupMember_FullMethodName    = "/safevault.Coordinator/AddGroupMember"
+	Coordinator_RemoveGroupMember_FullMethodName = "/safevault.Coordinator/RemoveGroupMember"
+	Coordinator_ListGroups_FullMethodName        = "/safevault.Coordinator/ListGroups"
 )
 
 // CoordinatorClient is the client API for Coordinator service.
@@ -45,18 +56,36 @@ type CoordinatorClient interface {
 	Login(ctx context.Context, in *LoginRequest, opts ...grpc.CallOption) (*LoginResponse, error)
 	// Commence le dépôt d'un fichier : identifiant, époque et nœuds.
 	CreateFile(ctx context.Context, in *CreateFileRequest, opts ...grpc.CallOption) (*CreateFileResponse, error)
-	// Valide le dépôt une fois les parts et les blocs envoyés aux nœuds.
+	// Commence une nouvelle version d'un fichier (propriétaire ou droit w).
+	CreateVersion(ctx context.Context, in *CreateVersionRequest, opts ...grpc.CallOption) (*CreateVersionResponse, error)
+	// Valide un dépôt une fois les parts et les blocs envoyés aux nœuds.
 	ConfirmUpload(ctx context.Context, in *ConfirmUploadRequest, opts ...grpc.CallOption) (*ConfirmUploadResponse, error)
-	// Liste les fichiers accessibles à l'utilisateur connecté.
+	// Liste les fichiers de l'utilisateur et ceux qui lui sont partagés.
 	ListFiles(ctx context.Context, in *ListFilesRequest, opts ...grpc.CallOption) (*ListFilesResponse, error)
-	// Donne les informations nécessaires pour relire un fichier (propriétaire ou destinataire).
+	// Donne les informations nécessaires pour relire une version d'un fichier.
 	GetFile(ctx context.Context, in *GetFileRequest, opts ...grpc.CallOption) (*GetFileResponse, error)
+	// Liste les versions d'un fichier.
+	ListVersions(ctx context.Context, in *ListVersionsRequest, opts ...grpc.CallOption) (*ListVersionsResponse, error)
+	// Renomme un fichier (propriétaire ou droit m).
+	RenameFile(ctx context.Context, in *RenameFileRequest, opts ...grpc.CallOption) (*RenameFileResponse, error)
+	// Supprime un fichier (propriétaire ou droit d).
+	RemoveFile(ctx context.Context, in *RemoveFileRequest, opts ...grpc.CallOption) (*RemoveFileResponse, error)
+	// Transfère la propriété d'un fichier (propriétaire).
+	TransferFile(ctx context.Context, in *TransferFileRequest, opts ...grpc.CallOption) (*TransferFileResponse, error)
 	// Renvoie la clé publique d'un utilisateur, pour lui partager un fichier.
 	GetUserKey(ctx context.Context, in *GetUserKeyRequest, opts ...grpc.CallOption) (*GetUserKeyResponse, error)
-	// Enregistre un partage : le propriétaire fournit l'autorisation signée.
+	// Enregistre une autorisation (propriétaire, ou droit s ou m).
 	ShareFile(ctx context.Context, in *ShareFileRequest, opts ...grpc.CallOption) (*ShareFileResponse, error)
-	// Retire un partage côté coordinateur (la révocation signée part aussi vers les nœuds).
+	// Retire un accès (propriétaire ou droit m).
 	RevokeShare(ctx context.Context, in *RevokeShareRequest, opts ...grpc.CallOption) (*RevokeShareResponse, error)
+	// Liste qui a accès au fichier, avec quels droits.
+	ListAccess(ctx context.Context, in *ListAccessRequest, opts ...grpc.CallOption) (*ListAccessResponse, error)
+	// Groupes d'utilisateurs, pour partager avec plusieurs personnes à la fois.
+	CreateGroup(ctx context.Context, in *CreateGroupRequest, opts ...grpc.CallOption) (*CreateGroupResponse, error)
+	DeleteGroup(ctx context.Context, in *DeleteGroupRequest, opts ...grpc.CallOption) (*DeleteGroupResponse, error)
+	AddGroupMember(ctx context.Context, in *GroupMemberRequest, opts ...grpc.CallOption) (*GroupMemberResponse, error)
+	RemoveGroupMember(ctx context.Context, in *GroupMemberRequest, opts ...grpc.CallOption) (*GroupMemberResponse, error)
+	ListGroups(ctx context.Context, in *ListGroupsRequest, opts ...grpc.CallOption) (*ListGroupsResponse, error)
 }
 
 type coordinatorClient struct {
@@ -107,6 +136,16 @@ func (c *coordinatorClient) CreateFile(ctx context.Context, in *CreateFileReques
 	return out, nil
 }
 
+func (c *coordinatorClient) CreateVersion(ctx context.Context, in *CreateVersionRequest, opts ...grpc.CallOption) (*CreateVersionResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(CreateVersionResponse)
+	err := c.cc.Invoke(ctx, Coordinator_CreateVersion_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 func (c *coordinatorClient) ConfirmUpload(ctx context.Context, in *ConfirmUploadRequest, opts ...grpc.CallOption) (*ConfirmUploadResponse, error) {
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
 	out := new(ConfirmUploadResponse)
@@ -131,6 +170,46 @@ func (c *coordinatorClient) GetFile(ctx context.Context, in *GetFileRequest, opt
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
 	out := new(GetFileResponse)
 	err := c.cc.Invoke(ctx, Coordinator_GetFile_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *coordinatorClient) ListVersions(ctx context.Context, in *ListVersionsRequest, opts ...grpc.CallOption) (*ListVersionsResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(ListVersionsResponse)
+	err := c.cc.Invoke(ctx, Coordinator_ListVersions_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *coordinatorClient) RenameFile(ctx context.Context, in *RenameFileRequest, opts ...grpc.CallOption) (*RenameFileResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(RenameFileResponse)
+	err := c.cc.Invoke(ctx, Coordinator_RenameFile_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *coordinatorClient) RemoveFile(ctx context.Context, in *RemoveFileRequest, opts ...grpc.CallOption) (*RemoveFileResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(RemoveFileResponse)
+	err := c.cc.Invoke(ctx, Coordinator_RemoveFile_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *coordinatorClient) TransferFile(ctx context.Context, in *TransferFileRequest, opts ...grpc.CallOption) (*TransferFileResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(TransferFileResponse)
+	err := c.cc.Invoke(ctx, Coordinator_TransferFile_FullMethodName, in, out, cOpts...)
 	if err != nil {
 		return nil, err
 	}
@@ -167,6 +246,66 @@ func (c *coordinatorClient) RevokeShare(ctx context.Context, in *RevokeShareRequ
 	return out, nil
 }
 
+func (c *coordinatorClient) ListAccess(ctx context.Context, in *ListAccessRequest, opts ...grpc.CallOption) (*ListAccessResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(ListAccessResponse)
+	err := c.cc.Invoke(ctx, Coordinator_ListAccess_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *coordinatorClient) CreateGroup(ctx context.Context, in *CreateGroupRequest, opts ...grpc.CallOption) (*CreateGroupResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(CreateGroupResponse)
+	err := c.cc.Invoke(ctx, Coordinator_CreateGroup_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *coordinatorClient) DeleteGroup(ctx context.Context, in *DeleteGroupRequest, opts ...grpc.CallOption) (*DeleteGroupResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(DeleteGroupResponse)
+	err := c.cc.Invoke(ctx, Coordinator_DeleteGroup_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *coordinatorClient) AddGroupMember(ctx context.Context, in *GroupMemberRequest, opts ...grpc.CallOption) (*GroupMemberResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(GroupMemberResponse)
+	err := c.cc.Invoke(ctx, Coordinator_AddGroupMember_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *coordinatorClient) RemoveGroupMember(ctx context.Context, in *GroupMemberRequest, opts ...grpc.CallOption) (*GroupMemberResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(GroupMemberResponse)
+	err := c.cc.Invoke(ctx, Coordinator_RemoveGroupMember_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *coordinatorClient) ListGroups(ctx context.Context, in *ListGroupsRequest, opts ...grpc.CallOption) (*ListGroupsResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(ListGroupsResponse)
+	err := c.cc.Invoke(ctx, Coordinator_ListGroups_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 // CoordinatorServer is the server API for Coordinator service.
 // All implementations must embed UnimplementedCoordinatorServer
 // for forward compatibility.
@@ -179,18 +318,36 @@ type CoordinatorServer interface {
 	Login(context.Context, *LoginRequest) (*LoginResponse, error)
 	// Commence le dépôt d'un fichier : identifiant, époque et nœuds.
 	CreateFile(context.Context, *CreateFileRequest) (*CreateFileResponse, error)
-	// Valide le dépôt une fois les parts et les blocs envoyés aux nœuds.
+	// Commence une nouvelle version d'un fichier (propriétaire ou droit w).
+	CreateVersion(context.Context, *CreateVersionRequest) (*CreateVersionResponse, error)
+	// Valide un dépôt une fois les parts et les blocs envoyés aux nœuds.
 	ConfirmUpload(context.Context, *ConfirmUploadRequest) (*ConfirmUploadResponse, error)
-	// Liste les fichiers accessibles à l'utilisateur connecté.
+	// Liste les fichiers de l'utilisateur et ceux qui lui sont partagés.
 	ListFiles(context.Context, *ListFilesRequest) (*ListFilesResponse, error)
-	// Donne les informations nécessaires pour relire un fichier (propriétaire ou destinataire).
+	// Donne les informations nécessaires pour relire une version d'un fichier.
 	GetFile(context.Context, *GetFileRequest) (*GetFileResponse, error)
+	// Liste les versions d'un fichier.
+	ListVersions(context.Context, *ListVersionsRequest) (*ListVersionsResponse, error)
+	// Renomme un fichier (propriétaire ou droit m).
+	RenameFile(context.Context, *RenameFileRequest) (*RenameFileResponse, error)
+	// Supprime un fichier (propriétaire ou droit d).
+	RemoveFile(context.Context, *RemoveFileRequest) (*RemoveFileResponse, error)
+	// Transfère la propriété d'un fichier (propriétaire).
+	TransferFile(context.Context, *TransferFileRequest) (*TransferFileResponse, error)
 	// Renvoie la clé publique d'un utilisateur, pour lui partager un fichier.
 	GetUserKey(context.Context, *GetUserKeyRequest) (*GetUserKeyResponse, error)
-	// Enregistre un partage : le propriétaire fournit l'autorisation signée.
+	// Enregistre une autorisation (propriétaire, ou droit s ou m).
 	ShareFile(context.Context, *ShareFileRequest) (*ShareFileResponse, error)
-	// Retire un partage côté coordinateur (la révocation signée part aussi vers les nœuds).
+	// Retire un accès (propriétaire ou droit m).
 	RevokeShare(context.Context, *RevokeShareRequest) (*RevokeShareResponse, error)
+	// Liste qui a accès au fichier, avec quels droits.
+	ListAccess(context.Context, *ListAccessRequest) (*ListAccessResponse, error)
+	// Groupes d'utilisateurs, pour partager avec plusieurs personnes à la fois.
+	CreateGroup(context.Context, *CreateGroupRequest) (*CreateGroupResponse, error)
+	DeleteGroup(context.Context, *DeleteGroupRequest) (*DeleteGroupResponse, error)
+	AddGroupMember(context.Context, *GroupMemberRequest) (*GroupMemberResponse, error)
+	RemoveGroupMember(context.Context, *GroupMemberRequest) (*GroupMemberResponse, error)
+	ListGroups(context.Context, *ListGroupsRequest) (*ListGroupsResponse, error)
 	mustEmbedUnimplementedCoordinatorServer()
 }
 
@@ -213,6 +370,9 @@ func (UnimplementedCoordinatorServer) Login(context.Context, *LoginRequest) (*Lo
 func (UnimplementedCoordinatorServer) CreateFile(context.Context, *CreateFileRequest) (*CreateFileResponse, error) {
 	return nil, status.Error(codes.Unimplemented, "method CreateFile not implemented")
 }
+func (UnimplementedCoordinatorServer) CreateVersion(context.Context, *CreateVersionRequest) (*CreateVersionResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method CreateVersion not implemented")
+}
 func (UnimplementedCoordinatorServer) ConfirmUpload(context.Context, *ConfirmUploadRequest) (*ConfirmUploadResponse, error) {
 	return nil, status.Error(codes.Unimplemented, "method ConfirmUpload not implemented")
 }
@@ -222,6 +382,18 @@ func (UnimplementedCoordinatorServer) ListFiles(context.Context, *ListFilesReque
 func (UnimplementedCoordinatorServer) GetFile(context.Context, *GetFileRequest) (*GetFileResponse, error) {
 	return nil, status.Error(codes.Unimplemented, "method GetFile not implemented")
 }
+func (UnimplementedCoordinatorServer) ListVersions(context.Context, *ListVersionsRequest) (*ListVersionsResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method ListVersions not implemented")
+}
+func (UnimplementedCoordinatorServer) RenameFile(context.Context, *RenameFileRequest) (*RenameFileResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method RenameFile not implemented")
+}
+func (UnimplementedCoordinatorServer) RemoveFile(context.Context, *RemoveFileRequest) (*RemoveFileResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method RemoveFile not implemented")
+}
+func (UnimplementedCoordinatorServer) TransferFile(context.Context, *TransferFileRequest) (*TransferFileResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method TransferFile not implemented")
+}
 func (UnimplementedCoordinatorServer) GetUserKey(context.Context, *GetUserKeyRequest) (*GetUserKeyResponse, error) {
 	return nil, status.Error(codes.Unimplemented, "method GetUserKey not implemented")
 }
@@ -230,6 +402,24 @@ func (UnimplementedCoordinatorServer) ShareFile(context.Context, *ShareFileReque
 }
 func (UnimplementedCoordinatorServer) RevokeShare(context.Context, *RevokeShareRequest) (*RevokeShareResponse, error) {
 	return nil, status.Error(codes.Unimplemented, "method RevokeShare not implemented")
+}
+func (UnimplementedCoordinatorServer) ListAccess(context.Context, *ListAccessRequest) (*ListAccessResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method ListAccess not implemented")
+}
+func (UnimplementedCoordinatorServer) CreateGroup(context.Context, *CreateGroupRequest) (*CreateGroupResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method CreateGroup not implemented")
+}
+func (UnimplementedCoordinatorServer) DeleteGroup(context.Context, *DeleteGroupRequest) (*DeleteGroupResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method DeleteGroup not implemented")
+}
+func (UnimplementedCoordinatorServer) AddGroupMember(context.Context, *GroupMemberRequest) (*GroupMemberResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method AddGroupMember not implemented")
+}
+func (UnimplementedCoordinatorServer) RemoveGroupMember(context.Context, *GroupMemberRequest) (*GroupMemberResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method RemoveGroupMember not implemented")
+}
+func (UnimplementedCoordinatorServer) ListGroups(context.Context, *ListGroupsRequest) (*ListGroupsResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method ListGroups not implemented")
 }
 func (UnimplementedCoordinatorServer) mustEmbedUnimplementedCoordinatorServer() {}
 func (UnimplementedCoordinatorServer) testEmbeddedByValue()                     {}
@@ -324,6 +514,24 @@ func _Coordinator_CreateFile_Handler(srv interface{}, ctx context.Context, dec f
 	return interceptor(ctx, in, info, handler)
 }
 
+func _Coordinator_CreateVersion_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(CreateVersionRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(CoordinatorServer).CreateVersion(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: Coordinator_CreateVersion_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(CoordinatorServer).CreateVersion(ctx, req.(*CreateVersionRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
 func _Coordinator_ConfirmUpload_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
 	in := new(ConfirmUploadRequest)
 	if err := dec(in); err != nil {
@@ -374,6 +582,78 @@ func _Coordinator_GetFile_Handler(srv interface{}, ctx context.Context, dec func
 	}
 	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
 		return srv.(CoordinatorServer).GetFile(ctx, req.(*GetFileRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _Coordinator_ListVersions_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(ListVersionsRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(CoordinatorServer).ListVersions(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: Coordinator_ListVersions_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(CoordinatorServer).ListVersions(ctx, req.(*ListVersionsRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _Coordinator_RenameFile_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(RenameFileRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(CoordinatorServer).RenameFile(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: Coordinator_RenameFile_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(CoordinatorServer).RenameFile(ctx, req.(*RenameFileRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _Coordinator_RemoveFile_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(RemoveFileRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(CoordinatorServer).RemoveFile(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: Coordinator_RemoveFile_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(CoordinatorServer).RemoveFile(ctx, req.(*RemoveFileRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _Coordinator_TransferFile_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(TransferFileRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(CoordinatorServer).TransferFile(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: Coordinator_TransferFile_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(CoordinatorServer).TransferFile(ctx, req.(*TransferFileRequest))
 	}
 	return interceptor(ctx, in, info, handler)
 }
@@ -432,6 +712,114 @@ func _Coordinator_RevokeShare_Handler(srv interface{}, ctx context.Context, dec 
 	return interceptor(ctx, in, info, handler)
 }
 
+func _Coordinator_ListAccess_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(ListAccessRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(CoordinatorServer).ListAccess(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: Coordinator_ListAccess_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(CoordinatorServer).ListAccess(ctx, req.(*ListAccessRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _Coordinator_CreateGroup_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(CreateGroupRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(CoordinatorServer).CreateGroup(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: Coordinator_CreateGroup_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(CoordinatorServer).CreateGroup(ctx, req.(*CreateGroupRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _Coordinator_DeleteGroup_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(DeleteGroupRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(CoordinatorServer).DeleteGroup(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: Coordinator_DeleteGroup_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(CoordinatorServer).DeleteGroup(ctx, req.(*DeleteGroupRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _Coordinator_AddGroupMember_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(GroupMemberRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(CoordinatorServer).AddGroupMember(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: Coordinator_AddGroupMember_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(CoordinatorServer).AddGroupMember(ctx, req.(*GroupMemberRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _Coordinator_RemoveGroupMember_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(GroupMemberRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(CoordinatorServer).RemoveGroupMember(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: Coordinator_RemoveGroupMember_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(CoordinatorServer).RemoveGroupMember(ctx, req.(*GroupMemberRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _Coordinator_ListGroups_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(ListGroupsRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(CoordinatorServer).ListGroups(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: Coordinator_ListGroups_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(CoordinatorServer).ListGroups(ctx, req.(*ListGroupsRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
 // Coordinator_ServiceDesc is the grpc.ServiceDesc for Coordinator service.
 // It's only intended for direct use with grpc.RegisterService,
 // and not to be introspected or modified (even as a copy)
@@ -456,6 +844,10 @@ var Coordinator_ServiceDesc = grpc.ServiceDesc{
 			Handler:    _Coordinator_CreateFile_Handler,
 		},
 		{
+			MethodName: "CreateVersion",
+			Handler:    _Coordinator_CreateVersion_Handler,
+		},
+		{
 			MethodName: "ConfirmUpload",
 			Handler:    _Coordinator_ConfirmUpload_Handler,
 		},
@@ -468,6 +860,22 @@ var Coordinator_ServiceDesc = grpc.ServiceDesc{
 			Handler:    _Coordinator_GetFile_Handler,
 		},
 		{
+			MethodName: "ListVersions",
+			Handler:    _Coordinator_ListVersions_Handler,
+		},
+		{
+			MethodName: "RenameFile",
+			Handler:    _Coordinator_RenameFile_Handler,
+		},
+		{
+			MethodName: "RemoveFile",
+			Handler:    _Coordinator_RemoveFile_Handler,
+		},
+		{
+			MethodName: "TransferFile",
+			Handler:    _Coordinator_TransferFile_Handler,
+		},
+		{
 			MethodName: "GetUserKey",
 			Handler:    _Coordinator_GetUserKey_Handler,
 		},
@@ -478,6 +886,30 @@ var Coordinator_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "RevokeShare",
 			Handler:    _Coordinator_RevokeShare_Handler,
+		},
+		{
+			MethodName: "ListAccess",
+			Handler:    _Coordinator_ListAccess_Handler,
+		},
+		{
+			MethodName: "CreateGroup",
+			Handler:    _Coordinator_CreateGroup_Handler,
+		},
+		{
+			MethodName: "DeleteGroup",
+			Handler:    _Coordinator_DeleteGroup_Handler,
+		},
+		{
+			MethodName: "AddGroupMember",
+			Handler:    _Coordinator_AddGroupMember_Handler,
+		},
+		{
+			MethodName: "RemoveGroupMember",
+			Handler:    _Coordinator_RemoveGroupMember_Handler,
+		},
+		{
+			MethodName: "ListGroups",
+			Handler:    _Coordinator_ListGroups_Handler,
 		},
 	},
 	Streams:  []grpc.StreamDesc{},

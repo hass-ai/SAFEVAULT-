@@ -45,18 +45,18 @@ message NodeInfo {
   uint32 x = 2;       // abscisse du nœud dans le partage de Shamir (égale à son NODE_X)
 }
 
-// Informations publiques nécessaires pour relire un fichier (aucune clé dedans).
+// Informations publiques nécessaires pour relire une version d'un fichier (aucune clé dedans).
 message Manifest {
   uint32 block_count = 1;
   repeated bytes block_hashes = 2; // SHA-256 de chaque bloc chiffré, dans l'ordre
-  bytes nonce_prefix = 3;          // préfixe des nonces AES-GCM
-  uint64 size = 4;                 // taille du fichier en clair, en octets
+  bytes nonce_prefix = 3;          // inutilisé (les nonces sont dérivés du numéro de bloc)
+  uint64 size = 4;                 // taille arrondie du contenu chiffré
 }
 
 message CreateFileRequest {
-  // Nom chiffré côté client : le coordinateur ne le lit jamais.
+  // Nom chiffré pour le propriétaire (avec sa clé publique) : le coordinateur ne le lit jamais.
   bytes encrypted_name = 1;
-  // Taille du fichier après remplissage (arrondie) : la taille exacte reste chez le client.
+  // Taille après remplissage (arrondie) : la taille exacte reste chez le client.
   uint64 size = 2;
 }
 
@@ -66,11 +66,27 @@ message CreateFileResponse {
   repeated NodeInfo nodes = 3;
   uint32 t = 4;                   // seuil
   uint32 n = 5;                   // nombre de parts
+  uint32 version = 6;             // 1
+}
+
+// Commence une nouvelle version d'un fichier existant (droit w).
+message CreateVersionRequest {
+  string file_id = 1;
+  uint64 size = 2;
+}
+
+message CreateVersionResponse {
+  uint32 version = 1;
+  uint64 epoch = 2;
+  repeated NodeInfo nodes = 3;
+  uint32 t = 4;
+  uint32 n = 5;
 }
 
 message ConfirmUploadRequest {
   string file_id = 1;
   Manifest manifest = 2;
+  uint32 version = 3;             // 0 ou 1 pour le premier dépôt
 }
 
 message ConfirmUploadResponse {}
@@ -79,12 +95,14 @@ message ListFilesRequest {}
 
 message FileInfo {
   string file_id = 1;
-  // Nom chiffré : pour le propriétaire, avec sa propre clé ; pour un destinataire,
-  // avec sa clé publique (copie jointe au partage).
-  bytes encrypted_name = 2;
-  uint64 size = 3;        // taille arrondie
-  string owner = 4;       // nom d'utilisateur du propriétaire
-  bool shared = 5;        // vrai si le fichier est partagé AVEC l'utilisateur
+  bytes encrypted_name = 2;       // nom chiffré pour l'utilisateur qui liste
+  uint64 size = 3;                // taille arrondie de la version actuelle
+  string owner = 4;               // nom d'utilisateur du propriétaire
+  bool shared = 5;                // vrai si le fichier est partagé AVEC l'utilisateur
+  uint32 rights = 6;              // droits de l'utilisateur (r = 1, w = 2, s = 4, d = 8, m = 16)
+  uint32 version = 7;             // version actuelle
+  int64 modified_at = 8;          // date de la version actuelle (secondes Unix)
+  int64 expires_at = 9;           // fin de l'accès partagé (0 = sans limite)
 }
 
 message ListFilesResponse {
@@ -93,6 +111,7 @@ message ListFilesResponse {
 
 message GetFileRequest {
   string file_id = 1;
+  uint32 version = 2;             // 0 = version actuelle
 }
 
 message GetFileResponse {
@@ -100,8 +119,58 @@ message GetFileResponse {
   uint32 t = 2;
   Manifest manifest = 3;
   repeated NodeInfo nodes = 4;
-  Grant grant = 5;                // autorisation à présenter aux nœuds (destinataire seulement)
+  Grant grant = 5;                // autorisation de l'utilisateur, à présenter aux nœuds (absente pour le propriétaire)
+  uint32 version = 6;             // version renvoyée
+  uint32 rights = 7;              // droits de l'utilisateur
+  uint32 current_version = 8;
 }
+
+message VersionInfo {
+  uint32 version = 1;
+  uint64 size = 2;
+  string author = 3;              // utilisateur qui a déposé cette version
+  int64 created_at = 4;
+}
+
+message ListVersionsRequest {
+  string file_id = 1;
+}
+
+message ListVersionsResponse {
+  repeated VersionInfo versions = 1;
+}
+
+// Nom chiffré pour un utilisateur donné.
+message UserName {
+  string username = 1;
+  bytes encrypted_name = 2;
+}
+
+// Renomme un fichier (propriétaire ou droit m) : le client rechiffre le nouveau nom pour
+// chaque utilisateur qui a accès au fichier.
+message RenameFileRequest {
+  string file_id = 1;
+  repeated UserName names = 2;
+}
+
+message RenameFileResponse {}
+
+// Supprime un fichier chez le coordinateur (propriétaire ou droit d), après son effacement
+// sur les nœuds.
+message RemoveFileRequest {
+  string file_id = 1;
+}
+
+message RemoveFileResponse {}
+
+// Transfère la propriété d'un fichier (propriétaire seulement).
+message TransferFileRequest {
+  string new_owner = 1;
+  Transfer transfer = 2;          // signé par le propriétaire actuel
+  bytes encrypted_name = 3;       // nom chiffré pour le nouveau propriétaire
+}
+
+message TransferFileResponse {}
 
 // ---------- Partage ----------
 
@@ -115,7 +184,7 @@ message GetUserKeyResponse {
 
 message ShareFileRequest {
   string grantee = 1;          // nom d'utilisateur du destinataire
-  Grant grant = 2;             // signée par le propriétaire
+  Grant grant = 2;             // signée par l'appelant (propriétaire, ou droit s ou m)
   bytes encrypted_name = 3;    // nom du fichier chiffré pour le destinataire
 }
 
@@ -124,9 +193,50 @@ message ShareFileResponse {}
 message RevokeShareRequest {
   string file_id = 1;
   string grantee = 2;
+  Revocation revocation = 3;   // signée par le propriétaire ou un utilisateur qui a le droit m
 }
 
 message RevokeShareResponse {}
+
+message AccessEntry {
+  string username = 1;
+  bytes public_key = 2;
+  uint32 rights = 3;
+  int64 expires_at = 4;        // 0 = sans limite
+  string granted_by = 5;       // utilisateur qui a signé l'autorisation
+  int64 granted_at = 6;
+  bool owner = 7;
+}
+
+message ListAccessRequest {
+  string file_id = 1;
+}
+
+message ListAccessResponse {
+  repeated AccessEntry entries = 1;  // le propriétaire d'abord
+}
+
+// ---------- Groupes ----------
+
+message GroupMember {
+  string username = 1;
+  bytes public_key = 2;
+}
+
+message GroupInfo {
+  string name = 1;
+  string owner = 2;
+  repeated GroupMember members = 3;
+}
+
+message CreateGroupRequest { string name = 1; }
+message CreateGroupResponse {}
+message DeleteGroupRequest { string name = 1; }
+message DeleteGroupResponse {}
+message GroupMemberRequest { string group = 1; string username = 2; }
+message GroupMemberResponse {}
+message ListGroupsRequest {}
+message ListGroupsResponse { repeated GroupInfo groups = 1; }
 
 service Coordinator {
   // Inscrit un utilisateur avec sa clé publique.
@@ -135,18 +245,39 @@ service Coordinator {
   rpc GetChallenge(GetChallengeRequest) returns (GetChallengeResponse);
   // Vérifie la signature du défi et renvoie un jeton de session.
   rpc Login(LoginRequest) returns (LoginResponse);
+
   // Commence le dépôt d'un fichier : identifiant, époque et nœuds.
   rpc CreateFile(CreateFileRequest) returns (CreateFileResponse);
-  // Valide le dépôt une fois les parts et les blocs envoyés aux nœuds.
+  // Commence une nouvelle version d'un fichier (propriétaire ou droit w).
+  rpc CreateVersion(CreateVersionRequest) returns (CreateVersionResponse);
+  // Valide un dépôt une fois les parts et les blocs envoyés aux nœuds.
   rpc ConfirmUpload(ConfirmUploadRequest) returns (ConfirmUploadResponse);
-  // Liste les fichiers accessibles à l'utilisateur connecté.
+  // Liste les fichiers de l'utilisateur et ceux qui lui sont partagés.
   rpc ListFiles(ListFilesRequest) returns (ListFilesResponse);
-  // Donne les informations nécessaires pour relire un fichier (propriétaire ou destinataire).
+  // Donne les informations nécessaires pour relire une version d'un fichier.
   rpc GetFile(GetFileRequest) returns (GetFileResponse);
+  // Liste les versions d'un fichier.
+  rpc ListVersions(ListVersionsRequest) returns (ListVersionsResponse);
+  // Renomme un fichier (propriétaire ou droit m).
+  rpc RenameFile(RenameFileRequest) returns (RenameFileResponse);
+  // Supprime un fichier (propriétaire ou droit d).
+  rpc RemoveFile(RemoveFileRequest) returns (RemoveFileResponse);
+  // Transfère la propriété d'un fichier (propriétaire).
+  rpc TransferFile(TransferFileRequest) returns (TransferFileResponse);
+
   // Renvoie la clé publique d'un utilisateur, pour lui partager un fichier.
   rpc GetUserKey(GetUserKeyRequest) returns (GetUserKeyResponse);
-  // Enregistre un partage : le propriétaire fournit l'autorisation signée.
+  // Enregistre une autorisation (propriétaire, ou droit s ou m).
   rpc ShareFile(ShareFileRequest) returns (ShareFileResponse);
-  // Retire un partage côté coordinateur (la révocation signée part aussi vers les nœuds).
+  // Retire un accès (propriétaire ou droit m).
   rpc RevokeShare(RevokeShareRequest) returns (RevokeShareResponse);
+  // Liste qui a accès au fichier, avec quels droits.
+  rpc ListAccess(ListAccessRequest) returns (ListAccessResponse);
+
+  // Groupes d'utilisateurs, pour partager avec plusieurs personnes à la fois.
+  rpc CreateGroup(CreateGroupRequest) returns (CreateGroupResponse);
+  rpc DeleteGroup(DeleteGroupRequest) returns (DeleteGroupResponse);
+  rpc AddGroupMember(GroupMemberRequest) returns (GroupMemberResponse);
+  rpc RemoveGroupMember(GroupMemberRequest) returns (GroupMemberResponse);
+  rpc ListGroups(ListGroupsRequest) returns (ListGroupsResponse);
 }

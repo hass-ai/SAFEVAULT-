@@ -21,6 +21,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"strconv"
 )
 
 const (
@@ -42,6 +43,16 @@ var (
 	ErrNoBlocks  = errors.New("crypto : aucun bloc")
 	ErrBlockSize = errors.New("crypto : taille de bloc invalide")
 )
+
+// VersionContext renvoie l'identifiant d'une version de fichier à passer à DeriveFileKey
+// et NewFileCipher : chaque version a son propre secret, et un bloc d'une version ne
+// peut pas passer pour un bloc d'une autre.
+func VersionContext(fileID string, version uint32) []byte {
+	if version == 0 {
+		version = 1
+	}
+	return []byte(fileID + "/v" + strconv.FormatUint(uint64(version), 10))
+}
 
 // DeriveFileKey dérive la clé AES-256 du fichier fileID à partir du secret
 // partagé (encodage canonique sur 32 octets d'un scalaire, voir
