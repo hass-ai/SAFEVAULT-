@@ -242,6 +242,26 @@ func TestInvalidFileID(t *testing.T) {
 	}
 }
 
+func TestRevocations(t *testing.T) {
+	s := openStore(t)
+
+	if _, ok, err := s.RevokedAt("f1", []byte("bob")); ok || err != nil {
+		t.Fatalf("révocation trouvée avant d'en enregistrer : %v %v", ok, err)
+	}
+	s.PutRevocation("f1", []byte("bob"), 100)
+	s.PutRevocation("f1", []byte("bob"), 50) // plus ancienne : ignorée
+	at, ok, err := s.RevokedAt("f1", []byte("bob"))
+	if !ok || err != nil || at != 100 {
+		t.Fatalf("révocation %d %v %v, attendue 100", at, ok, err)
+	}
+	if _, ok, _ := s.RevokedAt("f1", []byte("charlie")); ok {
+		t.Fatal("révocation de bob appliquée à charlie")
+	}
+	if err := s.PutRevocation("../x", []byte("bob"), 1); !errors.Is(err, ErrInvalidFileID) {
+		t.Fatalf("erreur %v, attendue ErrInvalidFileID", err)
+	}
+}
+
 func TestSecureDeleteEnabled(t *testing.T) {
 	s := openStore(t)
 

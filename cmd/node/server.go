@@ -8,10 +8,12 @@ import (
 	"io"
 	"slices"
 	"sync"
+	"time"
 
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 
+	"safevault/internal/access"
 	"safevault/internal/storage"
 	pb "safevault/proto"
 )
@@ -30,12 +32,13 @@ type nodeServer struct {
 	store  *storage.Store
 	proofs *proofVerifier
 	peers  *tls.Config // configuration TLS pour appeler les autres nœuds (mTLS)
+	now    func() time.Time
 
 	prepareMu sync.Mutex // un seul Prepare à la fois
 }
 
 func newNodeServer(x uint32, store *storage.Store, peers *tls.Config) *nodeServer {
-	return &nodeServer{x: x, store: store, proofs: newProofVerifier(), peers: peers}
+	return &nodeServer{x: x, store: store, proofs: newProofVerifier(), peers: peers, now: time.Now}
 }
 
 // PutShare enregistre la part du nœud pour un fichier. La clé qui dépose la première part
@@ -73,7 +76,7 @@ func (s *nodeServer) GetShare(ctx context.Context, req *pb.GetShareRequest) (*pb
 	if err := s.proofs.verify(labelGetShare, s.x, req.FileId, req.Epoch, req.Proof); err != nil {
 		return nil, err
 	}
-	if err := s.checkOwner(req.FileId, req.Proof.PublicKey); err != nil {
+	if err := s.checkReader(req.FileId, req.Proof.PublicKey, req.Grant); err != nil {
 		return nil, err
 	}
 
@@ -142,7 +145,7 @@ func (s *nodeServer) GetBlocks(req *pb.GetBlocksRequest, stream pb.Node_GetBlock
 	if err := s.proofs.verify(labelGetBlocks, s.x, req.FileId, 0, req.Proof); err != nil {
 		return err
 	}
-	if err := s.checkOwner(req.FileId, req.Proof.PublicKey); err != nil {
+	if err := s.checkReader(req.FileId, req.Proof.PublicKey, req.Grant); err != nil {
 		return err
 	}
 
@@ -197,8 +200,55 @@ func (s *nodeServer) DeliverSubShares(ctx context.Context, req *pb.DeliverSubSha
 	return &pb.DeliverSubSharesResponse{}, nil
 }
 
+// checkReader vérifie que publicKey peut lire le fichier : c'est le propriétaire, ou
+// le destinataire d'une autorisation signée par le propriétaire, valable et non révoquée.
+// Le coordinateur ne peut pas fabriquer une telle autorisation : il n'a pas la clé
+// privée du propriétaire.
+func (s *nodeServer) checkReader(fileID string, publicKey []byte, grant *pb.Grant) error {
+	owner, err := s.store.Owner(fileID)
+	if err != nil {
+		return storageError(err)
+	}
+	if slices.Equal(owner, publicKey) {
+		return nil
+	}
+	if grant == nil {
+		return status.Error(codes.PermissionDenied, "accès refusé à ce fichier")
+	}
+	if err := access.VerifyGrantFor(grant, fileID, owner, publicKey, s.now()); err != nil {
+		return status.Errorf(codes.PermissionDenied, "autorisation refusée : %v", err)
+	}
+	revokedAt, revoked, err := s.store.RevokedAt(fileID, publicKey)
+	if err != nil {
+		return storageError(err)
+	}
+	if revoked && grant.IssuedAt <= revokedAt {
+		return status.Error(codes.PermissionDenied, "accès retiré par le propriétaire")
+	}
+	return nil
+}
+
+// Revoke enregistre le retrait d'un accès. La révocation se suffit à elle-même : elle
+// est signée par le propriétaire du fichier, et la rejouer ne change rien.
+func (s *nodeServer) Revoke(ctx context.Context, req *pb.RevokeRequest) (*pb.RevokeResponse, error) {
+	r := req.Revocation
+	if r == nil || !storage.ValidFileID(r.FileId) {
+		return nil, status.Error(codes.InvalidArgument, "révocation manquante ou fichier invalide")
+	}
+	owner, err := s.store.Owner(r.FileId)
+	if err != nil {
+		return nil, storageError(err)
+	}
+	if err := access.VerifyRevocation(r, owner); err != nil {
+		return nil, status.Errorf(codes.PermissionDenied, "révocation refusée : %v", err)
+	}
+	if err := s.store.PutRevocation(r.FileId, r.GranteePublicKey, r.RevokedAt); err != nil {
+		return nil, storageError(err)
+	}
+	return &pb.RevokeResponse{}, nil
+}
+
 // checkOwner vérifie que publicKey est la clé propriétaire du fichier.
-// Le partage de fichiers (autorisations signées par le propriétaire) viendra au sprint 4.
 func (s *nodeServer) checkOwner(fileID string, publicKey []byte) error {
 	owner, err := s.store.Owner(fileID)
 	if err != nil {

@@ -76,6 +76,12 @@ CREATE TABLE IF NOT EXISTS sub_shares (
 	file_id      TEXT    NOT NULL,
 	value        BLOB    NOT NULL,
 	PRIMARY KEY (target_epoch, from_x, file_id)
+);
+CREATE TABLE IF NOT EXISTS revocations (
+	file_id    TEXT    NOT NULL,
+	grantee    BLOB    NOT NULL,
+	revoked_at INTEGER NOT NULL,
+	PRIMARY KEY (file_id, grantee)
 );`
 
 // Open ouvre (ou crée) le stockage dans le dossier dir.
@@ -144,6 +150,29 @@ func (s *Store) Owner(fileID string) ([]byte, error) {
 		return nil, ErrNotFound
 	}
 	return owner, err
+}
+
+// PutRevocation enregistre le retrait de l'accès de grantee au fichier à la date
+// revokedAt (secondes Unix). Seule la date la plus récente est gardée.
+func (s *Store) PutRevocation(fileID string, grantee []byte, revokedAt int64) error {
+	if !ValidFileID(fileID) {
+		return ErrInvalidFileID
+	}
+	_, err := s.db.Exec(`INSERT INTO revocations (file_id, grantee, revoked_at) VALUES (?, ?, ?)
+		ON CONFLICT (file_id, grantee) DO UPDATE SET revoked_at = max(revoked_at, excluded.revoked_at)`,
+		fileID, grantee, revokedAt)
+	return err
+}
+
+// RevokedAt renvoie la date du dernier retrait d'accès de grantee au fichier, si elle existe.
+func (s *Store) RevokedAt(fileID string, grantee []byte) (int64, bool, error) {
+	var revokedAt int64
+	err := s.db.QueryRow(`SELECT revoked_at FROM revocations WHERE file_id = ? AND grantee = ?`,
+		fileID, grantee).Scan(&revokedAt)
+	if errors.Is(err, sql.ErrNoRows) {
+		return 0, false, nil
+	}
+	return revokedAt, err == nil, err
 }
 
 // PutShare enregistre la part déposée par le client comme part en service,
