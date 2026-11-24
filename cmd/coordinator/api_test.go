@@ -156,7 +156,7 @@ func TestTokenRequired(t *testing.T) {
 	} {
 		_, err := c.coord.ListFiles(ctx, &pb.ListFilesRequest{})
 		wantCode(t, err, codes.Unauthenticated, name+", ListFiles")
-		_, err = c.coord.CreateFile(ctx, &pb.CreateFileRequest{Name: "x", Size: 1})
+		_, err = c.coord.CreateFile(ctx, &pb.CreateFileRequest{EncryptedName: []byte("x"), Size: 1})
 		wantCode(t, err, codes.Unauthenticated, name+", CreateFile")
 		_, err = c.coord.ConfirmUpload(ctx, &pb.ConfirmUploadRequest{FileId: "x"})
 		wantCode(t, err, codes.Unauthenticated, name+", ConfirmUpload")
@@ -184,7 +184,7 @@ func TestUploadThenDownloadInfo(t *testing.T) {
 	c.allNodesUp(t)
 	ctx, _ := loginToken(t, c, "alice", registerUser(t, c, "alice"))
 
-	file, err := c.coord.CreateFile(ctx, &pb.CreateFileRequest{Name: "rapport.pdf", Size: 3000})
+	file, err := c.coord.CreateFile(ctx, &pb.CreateFileRequest{EncryptedName: []byte("rapport.pdf"), Size: 3000})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -215,7 +215,7 @@ func TestUploadThenDownloadInfo(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(list.Files) != 1 || list.Files[0].FileId != file.FileId || list.Files[0].Name != "rapport.pdf" ||
+	if len(list.Files) != 1 || list.Files[0].FileId != file.FileId || string(list.Files[0].EncryptedName) != "rapport.pdf" ||
 		list.Files[0].Size != 3000 {
 		t.Fatalf("ListFiles : %+v", list.Files)
 	}
@@ -234,7 +234,7 @@ func TestConfirmUploadRejectsBadManifest(t *testing.T) {
 	c := startCoordinator(t)
 	c.allNodesUp(t)
 	ctx, _ := loginToken(t, c, "alice", registerUser(t, c, "alice"))
-	file, err := c.coord.CreateFile(ctx, &pb.CreateFileRequest{Name: "a", Size: 100})
+	file, err := c.coord.CreateFile(ctx, &pb.CreateFileRequest{EncryptedName: []byte("a"), Size: 100})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -257,7 +257,7 @@ func TestOtherUserCannotTouchFile(t *testing.T) {
 	alice, _ := loginToken(t, c, "alice", registerUser(t, c, "alice"))
 	bob, _ := loginToken(t, c, "bob", registerUser(t, c, "bob"))
 
-	file, err := c.coord.CreateFile(alice, &pb.CreateFileRequest{Name: "a", Size: 10})
+	file, err := c.coord.CreateFile(alice, &pb.CreateFileRequest{EncryptedName: []byte("a"), Size: 10})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -280,14 +280,14 @@ func TestCreateFileNeedsAllNodesUp(t *testing.T) {
 	ctx, _ := loginToken(t, c, "alice", registerUser(t, c, "alice"))
 
 	// Au démarrage, aucun nœud n'a encore répondu.
-	_, err := c.coord.CreateFile(ctx, &pb.CreateFileRequest{Name: "a", Size: 1})
+	_, err := c.coord.CreateFile(ctx, &pb.CreateFileRequest{EncryptedName: []byte("a"), Size: 1})
 	wantCode(t, err, codes.Unavailable, "nœuds jamais vus")
 
 	c.setNodes(t, true, true, false, true, true)
-	_, err = c.coord.CreateFile(ctx, &pb.CreateFileRequest{Name: "a", Size: 1})
+	_, err = c.coord.CreateFile(ctx, &pb.CreateFileRequest{EncryptedName: []byte("a"), Size: 1})
 	wantCode(t, err, codes.Unavailable, "nœud 3 en panne")
 
-	_, err = c.coord.CreateFile(ctx, &pb.CreateFileRequest{Name: "", Size: 1})
+	_, err = c.coord.CreateFile(ctx, &pb.CreateFileRequest{EncryptedName: []byte(""), Size: 1})
 	wantCode(t, err, codes.InvalidArgument, "nom vide")
 }
 
@@ -295,7 +295,7 @@ func TestGetFileWorksWithNodesDownAndListsUpNodesFirst(t *testing.T) {
 	c := startCoordinator(t)
 	c.allNodesUp(t)
 	ctx, _ := loginToken(t, c, "alice", registerUser(t, c, "alice"))
-	file, err := c.coord.CreateFile(ctx, &pb.CreateFileRequest{Name: "a", Size: 10})
+	file, err := c.coord.CreateFile(ctx, &pb.CreateFileRequest{EncryptedName: []byte("a"), Size: 10})
 	if err != nil {
 		t.Fatal(err)
 	}

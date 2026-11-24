@@ -8,7 +8,10 @@ import (
 
 // schemaVersion est la version du schéma, enregistrée dans PRAGMA user_version.
 // Toute modification du schéma ajoute une étape de migration et incrémente ce numéro.
-const schemaVersion = 1
+//
+//	1 : schéma initial
+//	2 : partages de fichiers (table grants)
+const schemaVersion = 2
 
 // schemaV1 crée les tables du coordinateur. Les dates sont des secondes Unix (INTEGER).
 //
@@ -60,8 +63,8 @@ CREATE TABLE epochs (
 );
 CREATE UNIQUE INDEX one_active_epoch ON epochs((1)) WHERE state IN ('preparing', 'committing');
 
--- Fichiers. name est un BLOB opaque : aujourd'hui le nom en UTF-8 envoyé par le client,
--- demain un nom chiffré côté client, sans changer le schéma.
+-- Fichiers. name est un BLOB opaque : le nom chiffré côté client (depuis la version 2 du
+-- contrat), que le coordinateur ne sait pas lire. size est la taille arrondie.
 -- epoch est l'époque des parts EN SERVICE de ce fichier (mise à jour au commit d'un
 -- renouvellement qui l'inclut).
 CREATE TABLE files (
@@ -104,7 +107,24 @@ CREATE TABLE blocks (
 );
 `
 
-// migrate crée le schéma si la base est vide, et refuse une base d'une version inconnue.
+// schemaV2 ajoute les partages : une ligne par (fichier, destinataire), avec
+// l'autorisation signée par le propriétaire (que le coordinateur ne peut pas fabriquer)
+// et le nom du fichier chiffré pour le destinataire.
+const schemaV2 = `
+CREATE TABLE grants (
+	file_id        TEXT    NOT NULL REFERENCES files(file_id) ON DELETE CASCADE,
+	grantee_id     INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+	signed_grant   BLOB    NOT NULL,
+	encrypted_name BLOB    NOT NULL,
+	created_at     INTEGER NOT NULL,
+	PRIMARY KEY (file_id, grantee_id)
+);
+CREATE INDEX grants_by_grantee ON grants(grantee_id);
+`
+
+// migrate amène la base à la version schemaVersion, étape par étape, et refuse une base
+// d'une version inconnue. Toutes les étapes sont faites dans une seule transaction :
+// une base n'est jamais laissée à moitié migrée.
 func migrate(db *sql.DB, now time.Time) error {
 	var version int
 	if err := db.QueryRow(`PRAGMA user_version`).Scan(&version); err != nil {
@@ -117,22 +137,27 @@ func migrate(db *sql.DB, now time.Time) error {
 		return fmt.Errorf("base en version %d, ce coordinateur connaît la version %d", version, schemaVersion)
 	}
 
-	// Base neuve : schéma, première époque et numéro de version dans une seule
-	// transaction, pour ne jamais laisser une base à moitié créée.
 	tx, err := db.Begin()
 	if err != nil {
 		return err
 	}
 	defer tx.Rollback()
 
-	if _, err := tx.Exec(schemaV1); err != nil {
-		return err
+	if version < 1 {
+		if _, err := tx.Exec(schemaV1); err != nil {
+			return err
+		}
+		// L'époque 1 est la première : 0 se confondrait avec un champ absent en proto3.
+		_, err = tx.Exec(`INSERT INTO epochs (number, state, started_at, finished_at) VALUES (1, 'committed', ?, ?)`,
+			now.Unix(), now.Unix())
+		if err != nil {
+			return err
+		}
 	}
-	// L'époque 1 est la première : 0 se confondrait avec un champ absent en proto3.
-	_, err = tx.Exec(`INSERT INTO epochs (number, state, started_at, finished_at) VALUES (1, 'committed', ?, ?)`,
-		now.Unix(), now.Unix())
-	if err != nil {
-		return err
+	if version < 2 {
+		if _, err := tx.Exec(schemaV2); err != nil {
+			return err
+		}
 	}
 	if _, err := tx.Exec(fmt.Sprintf(`PRAGMA user_version = %d`, schemaVersion)); err != nil {
 		return err

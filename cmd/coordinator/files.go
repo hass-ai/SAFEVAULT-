@@ -7,6 +7,7 @@ import (
 
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
+	"google.golang.org/protobuf/proto"
 
 	"safevault/internal/metadata"
 	pb "safevault/proto"
@@ -14,7 +15,7 @@ import (
 
 const (
 	fileIDSize  = 16      // octets aléatoires d'un identifiant de fichier (128 bits)
-	maxNameSize = 1024    // taille maximale du nom (opaque) d'un fichier
+	maxNameSize = 1024    // taille maximale du nom chiffré d'un fichier
 	maxBlocks   = 1 << 20 // nombre maximal de blocs d'un manifeste
 )
 
@@ -35,7 +36,7 @@ func newFileID() (string, error) {
 // CreateFile commence un dépôt : identifiant, époque courante, n nœuds disponibles, t et n.
 func (s *coordinatorServer) CreateFile(ctx context.Context, req *pb.CreateFileRequest) (*pb.CreateFileResponse, error) {
 	userID, _ := userFromContext(ctx)
-	if len(req.Name) == 0 || len(req.Name) > maxNameSize {
+	if len(req.EncryptedName) == 0 || len(req.EncryptedName) > maxNameSize {
 		return nil, status.Error(codes.InvalidArgument, "nom de fichier vide ou trop long")
 	}
 
@@ -59,7 +60,7 @@ func (s *coordinatorServer) CreateFile(ctx context.Context, req *pb.CreateFileRe
 		infos[i] = &pb.NodeInfo{Address: n.Address, X: n.X}
 	}
 	f := metadata.File{
-		ID: fileID, OwnerID: userID, Name: []byte(req.Name), Size: req.Size,
+		ID: fileID, OwnerID: userID, Name: req.EncryptedName, Size: req.Size,
 		T: s.t, N: s.n, Epoch: epoch,
 	}
 	err = s.store.CreateFile(f, xs)
@@ -101,32 +102,62 @@ func (s *coordinatorServer) ConfirmUpload(ctx context.Context, req *pb.ConfirmUp
 	return &pb.ConfirmUploadResponse{}, nil
 }
 
-// ListFiles liste les fichiers confirmés de l'utilisateur connecté.
+// ListFiles liste les fichiers confirmés de l'utilisateur connecté, puis ceux qui lui
+// sont partagés. Les noms sont chiffrés : le coordinateur ne fait que les transmettre.
 func (s *coordinatorServer) ListFiles(ctx context.Context, req *pb.ListFilesRequest) (*pb.ListFilesResponse, error) {
 	userID, _ := userFromContext(ctx)
-	files, err := s.store.FilesByOwner(userID)
+	user, err := s.store.UserByID(userID)
 	if err != nil {
 		return nil, internalError(err)
 	}
+	owned, err := s.store.FilesByOwner(userID)
+	if err != nil {
+		return nil, internalError(err)
+	}
+	shared, err := s.store.FilesSharedWith(userID)
+	if err != nil {
+		return nil, internalError(err)
+	}
+
 	resp := &pb.ListFilesResponse{}
-	for _, f := range files {
-		resp.Files = append(resp.Files, &pb.FileInfo{FileId: f.ID, Name: string(f.Name), Size: f.Size})
+	for _, f := range owned {
+		resp.Files = append(resp.Files, &pb.FileInfo{
+			FileId: f.ID, EncryptedName: f.Name, Size: f.Size, Owner: user.Username})
+	}
+	for _, f := range shared {
+		resp.Files = append(resp.Files, &pb.FileInfo{
+			FileId: f.ID, EncryptedName: f.EncryptedName, Size: f.Size, Owner: f.Owner, Shared: true})
 	}
 	return resp, nil
 }
 
 // GetFile renvoie ce qu'il faut pour relire un fichier : époque, seuil, manifeste et nœuds.
-// Seul le propriétaire y a accès pour l'instant (le partage viendra avec SV-62).
+// Le propriétaire y a accès, ainsi que les destinataires d'un partage, à qui le
+// coordinateur remet l'autorisation signée par le propriétaire, à présenter aux nœuds.
 func (s *coordinatorServer) GetFile(ctx context.Context, req *pb.GetFileRequest) (*pb.GetFileResponse, error) {
 	userID, _ := userFromContext(ctx)
 	setCallFile(ctx, req.FileId)
 
 	f, err := s.store.File(req.FileId)
-	if errors.Is(err, metadata.ErrNotFound) || (err == nil && f.OwnerID != userID) {
+	if errors.Is(err, metadata.ErrNotFound) {
 		return nil, errFileNotFound
 	}
 	if err != nil {
 		return nil, internalError(err)
+	}
+	var grant *pb.Grant
+	if f.OwnerID != userID {
+		signed, err := s.store.Grant(f.ID, userID)
+		if errors.Is(err, metadata.ErrNotFound) {
+			return nil, errFileNotFound
+		}
+		if err != nil {
+			return nil, internalError(err)
+		}
+		grant = &pb.Grant{}
+		if err := proto.Unmarshal(signed, grant); err != nil {
+			return nil, internalError(err)
+		}
 	}
 	if f.Status != metadata.FileReady {
 		return nil, status.Error(codes.FailedPrecondition, "dépôt pas encore confirmé")
@@ -150,6 +181,7 @@ func (s *coordinatorServer) GetFile(ctx context.Context, req *pb.GetFileRequest)
 			Size:        m.Size,
 		},
 		Nodes: nodeInfosUpFirst(nodes),
+		Grant: grant,
 	}, nil
 }
 

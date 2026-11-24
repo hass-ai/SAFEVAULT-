@@ -289,7 +289,7 @@ func TestLogsWhoWhatResultWithoutSecrets(t *testing.T) {
 
 	key := registerUser(t, c, "alice-nom-prive")
 	ctx, token := loginToken(t, c, "alice-nom-prive", key)
-	file, err := c.coord.CreateFile(ctx, &pb.CreateFileRequest{Name: "nom-de-fichier-prive.pdf", Size: 10})
+	file, err := c.coord.CreateFile(ctx, &pb.CreateFileRequest{EncryptedName: []byte("nom-de-fichier-prive.pdf"), Size: 10})
 	if err != nil {
 		t.Fatal(err)
 	}
