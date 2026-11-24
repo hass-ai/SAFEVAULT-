@@ -3,8 +3,13 @@
 //
 // Organisation de DATA_DIR :
 //
-//	blocks/<file_id>/<index>   un fichier par bloc chiffré
-//	node.db                    base SQLite : propriétaires, parts, sous-parts
+//	blocks/<clé>/<index>   un fichier par bloc chiffré
+//	node.db                base SQLite : propriétaires, versions, parts, sous-parts
+//
+// Un fichier a plusieurs versions, chacune avec son propre secret : ses parts et ses blocs
+// sont rangés sous la clé de stockage <file_id>_v<version> (voir VersionKey). Les
+// propriétaires, les auteurs des versions et les retraits d'accès sont rangés sous
+// l'identifiant du fichier.
 package storage
 
 import (
@@ -48,8 +53,23 @@ type SubShare struct {
 	Value  []byte
 }
 
-// fileIDPattern limite les identifiants de fichier à des caractères sûrs dans un chemin.
-var fileIDPattern = regexp.MustCompile(`^[A-Za-z0-9_-]{1,128}$`)
+// fileIDPattern limite les identifiants de fichier à des caractères sûrs dans un chemin ;
+// keyPattern accepte en plus le suffixe de version des clés de stockage.
+var (
+	fileIDPattern = regexp.MustCompile(`^[A-Za-z0-9_-]{1,128}$`)
+	keyPattern    = regexp.MustCompile(`^[A-Za-z0-9_-]{1,148}$`)
+)
+
+// VersionKey renvoie la clé de stockage de la version version du fichier fileID : les
+// parts et les blocs de chaque version sont rangés à part. La version 0 désigne la
+// version 1. Le suffixe est découpé à partir de la fin : deux couples (fichier, version)
+// différents donnent toujours deux clés différentes.
+func VersionKey(fileID string, version uint32) string {
+	if version == 0 {
+		version = 1
+	}
+	return fileID + "_v" + strconv.FormatUint(uint64(version), 10)
+}
 
 // Store donne accès aux blocs et aux parts stockés par le nœud.
 type Store struct {
@@ -76,6 +96,18 @@ CREATE TABLE IF NOT EXISTS sub_shares (
 	file_id      TEXT    NOT NULL,
 	value        BLOB    NOT NULL,
 	PRIMARY KEY (target_epoch, from_x, file_id)
+);
+CREATE TABLE IF NOT EXISTS previous_owners (
+	file_id TEXT    NOT NULL,
+	owner   BLOB    NOT NULL,
+	until   INTEGER NOT NULL,
+	PRIMARY KEY (file_id, owner)
+);
+CREATE TABLE IF NOT EXISTS versions (
+	file_id TEXT    NOT NULL,
+	version INTEGER NOT NULL,
+	author  BLOB    NOT NULL,
+	PRIMARY KEY (file_id, version)
 );
 CREATE TABLE IF NOT EXISTS revocations (
 	file_id    TEXT    NOT NULL,
@@ -115,6 +147,11 @@ func ValidFileID(fileID string) bool {
 	return fileIDPattern.MatchString(fileID)
 }
 
+// validKey indique si key est une clé de stockage acceptée (identifiant ou version).
+func validKey(key string) bool {
+	return keyPattern.MatchString(key)
+}
+
 // ClaimOwner enregistre owner comme propriétaire du fichier s'il n'en a pas encore,
 // et renvoie ErrOwnerMismatch si le fichier appartient déjà à une autre clé.
 func (s *Store) ClaimOwner(fileID string, owner []byte) error {
@@ -152,6 +189,156 @@ func (s *Store) Owner(fileID string) ([]byte, error) {
 	return owner, err
 }
 
+// Owners renvoie le propriétaire actuel du fichier (Until = 0), puis ses anciens
+// propriétaires avec la date à laquelle ils ont cédé le fichier.
+func (s *Store) Owners(fileID string) ([]Owner, error) {
+	current, err := s.Owner(fileID)
+	if err != nil {
+		return nil, err
+	}
+	owners := []Owner{{Key: current}}
+	rows, err := s.db.Query(`SELECT owner, until FROM previous_owners WHERE file_id = ? ORDER BY until`, fileID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var o Owner
+		if err := rows.Scan(&o.Key, &o.Until); err != nil {
+			return nil, err
+		}
+		owners = append(owners, o)
+	}
+	return owners, rows.Err()
+}
+
+// Owner est une clé propriétaire du fichier. Until vaut 0 pour le propriétaire actuel.
+type Owner struct {
+	Key   []byte
+	Until int64
+}
+
+// TransferOwner donne le fichier à newOwner à la date at : l'ancien propriétaire est
+// gardé dans l'historique, ses autorisations émises avant at restent valables.
+func (s *Store) TransferOwner(fileID string, newOwner []byte, at int64) error {
+	tx, err := s.db.Begin()
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+
+	var current []byte
+	err = tx.QueryRow(`SELECT owner FROM files WHERE file_id = ?`, fileID).Scan(&current)
+	if errors.Is(err, sql.ErrNoRows) {
+		return ErrNotFound
+	}
+	if err != nil {
+		return err
+	}
+	if slices.Equal(current, newOwner) {
+		return nil
+	}
+	_, err = tx.Exec(`INSERT INTO previous_owners (file_id, owner, until) VALUES (?, ?, ?)
+		ON CONFLICT (file_id, owner) DO UPDATE SET until = max(until, excluded.until)`, fileID, current, at)
+	if err != nil {
+		return err
+	}
+	if _, err := tx.Exec(`DELETE FROM previous_owners WHERE file_id = ? AND owner = ?`, fileID, newOwner); err != nil {
+		return err
+	}
+	if _, err := tx.Exec(`UPDATE files SET owner = ? WHERE file_id = ?`, newOwner, fileID); err != nil {
+		return err
+	}
+	return tx.Commit()
+}
+
+// ClaimVersion enregistre author comme auteur de la version du fichier, et renvoie
+// ErrOwnerMismatch si une autre clé l'a déjà déposée : une version déposée ne peut pas
+// être écrasée par quelqu'un d'autre.
+func (s *Store) ClaimVersion(fileID string, version uint32, author []byte) error {
+	if !ValidFileID(fileID) || version == 0 {
+		return ErrInvalidFileID
+	}
+	var current []byte
+	err := s.db.QueryRow(`SELECT author FROM versions WHERE file_id = ? AND version = ?`, fileID, version).
+		Scan(&current)
+	switch {
+	case errors.Is(err, sql.ErrNoRows):
+		_, err = s.db.Exec(`INSERT INTO versions (file_id, version, author) VALUES (?, ?, ?)`, fileID, version, author)
+		return err
+	case err != nil:
+		return err
+	case !slices.Equal(current, author):
+		return ErrOwnerMismatch
+	}
+	return nil
+}
+
+// VersionAuthor renvoie la clé qui a déposé la version du fichier.
+func (s *Store) VersionAuthor(fileID string, version uint32) ([]byte, error) {
+	var author []byte
+	err := s.db.QueryRow(`SELECT author FROM versions WHERE file_id = ? AND version = ?`, fileID, version).
+		Scan(&author)
+	if errors.Is(err, sql.ErrNoRows) {
+		return nil, ErrNotFound
+	}
+	return author, err
+}
+
+// DeleteFile efface tout ce que le nœud garde d'un fichier : parts et blocs de toutes les
+// versions, propriétaires, auteurs et retraits d'accès. Les parts sont effacées avec
+// secure_delete, les blocs sont supprimés du disque.
+func (s *Store) DeleteFile(fileID string) error {
+	if !ValidFileID(fileID) {
+		return ErrInvalidFileID
+	}
+	rows, err := s.db.Query(`SELECT version FROM versions WHERE file_id = ?`, fileID)
+	if err != nil {
+		return err
+	}
+	var keys []string
+	for rows.Next() {
+		var v uint32
+		if err := rows.Scan(&v); err != nil {
+			rows.Close()
+			return err
+		}
+		keys = append(keys, VersionKey(fileID, v))
+	}
+	rows.Close()
+	if err := rows.Err(); err != nil {
+		return err
+	}
+
+	tx, err := s.db.Begin()
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+	for _, key := range keys {
+		if _, err := tx.Exec(`DELETE FROM shares WHERE file_id = ?`, key); err != nil {
+			return err
+		}
+		if _, err := tx.Exec(`DELETE FROM sub_shares WHERE file_id = ?`, key); err != nil {
+			return err
+		}
+	}
+	for _, table := range []string{"versions", "previous_owners", "revocations", "files"} {
+		if _, err := tx.Exec(`DELETE FROM `+table+` WHERE file_id = ?`, fileID); err != nil {
+			return err
+		}
+	}
+	if err := tx.Commit(); err != nil {
+		return err
+	}
+	for _, key := range keys {
+		if err := os.RemoveAll(filepath.Join(s.dir, "blocks", key)); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
 // PutRevocation enregistre le retrait de l'accès de grantee au fichier à la date
 // revokedAt (secondes Unix). Seule la date la plus récente est gardée.
 func (s *Store) PutRevocation(fileID string, grantee []byte, revokedAt int64) error {
@@ -178,7 +365,7 @@ func (s *Store) RevokedAt(fileID string, grantee []byte) (int64, bool, error) {
 // PutShare enregistre la part déposée par le client comme part en service,
 // et supprime les parts des autres époques de ce fichier.
 func (s *Store) PutShare(fileID string, share Share) error {
-	if !ValidFileID(fileID) {
+	if !validKey(fileID) {
 		return ErrInvalidFileID
 	}
 	tx, err := s.db.Begin()
@@ -248,7 +435,7 @@ func (s *Store) HasPending(epoch uint64) (bool, error) {
 // PutPendingShare enregistre la nouvelle part calculée pendant un renouvellement,
 // sans toucher à la part en service.
 func (s *Store) PutPendingShare(fileID string, share Share) error {
-	if !ValidFileID(fileID) {
+	if !validKey(fileID) {
 		return ErrInvalidFileID
 	}
 	_, err := s.db.Exec(`INSERT OR REPLACE INTO shares (file_id, epoch, x, value, status) VALUES (?, ?, ?, ?, ?)`,
@@ -308,7 +495,7 @@ func (s *Store) PutSubShares(targetEpoch uint64, fromX uint32, subShares []SubSh
 	defer tx.Rollback()
 
 	for _, sub := range subShares {
-		if !ValidFileID(sub.FileID) {
+		if !validKey(sub.FileID) {
 			return ErrInvalidFileID
 		}
 		_, err := tx.Exec(`INSERT OR REPLACE INTO sub_shares (target_epoch, from_x, file_id, value) VALUES (?, ?, ?, ?)`,
@@ -343,7 +530,7 @@ func (s *Store) SubShares(targetEpoch uint64) ([]SubShare, error) {
 // PutBlock écrit le bloc index du fichier. L'écriture passe par un fichier temporaire
 // renommé à la fin : un bloc à moitié écrit n'est jamais visible.
 func (s *Store) PutBlock(fileID string, index uint32, data io.Reader) error {
-	if !ValidFileID(fileID) {
+	if !validKey(fileID) {
 		return ErrInvalidFileID
 	}
 	dir := filepath.Join(s.dir, "blocks", fileID)
@@ -373,7 +560,7 @@ func (s *Store) PutBlock(fileID string, index uint32, data io.Reader) error {
 
 // OpenBlock ouvre le bloc index du fichier en lecture.
 func (s *Store) OpenBlock(fileID string, index uint32) (io.ReadCloser, error) {
-	if !ValidFileID(fileID) {
+	if !validKey(fileID) {
 		return nil, ErrInvalidFileID
 	}
 	f, err := os.Open(filepath.Join(s.dir, "blocks", fileID, strconv.FormatUint(uint64(index), 10)))
@@ -385,7 +572,7 @@ func (s *Store) OpenBlock(fileID string, index uint32) (io.ReadCloser, error) {
 
 // BlockIndexes renvoie, dans l'ordre, les numéros des blocs stockés pour le fichier.
 func (s *Store) BlockIndexes(fileID string) ([]uint32, error) {
-	if !ValidFileID(fileID) {
+	if !validKey(fileID) {
 		return nil, ErrInvalidFileID
 	}
 	entries, err := os.ReadDir(filepath.Join(s.dir, "blocks", fileID))

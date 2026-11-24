@@ -41,8 +41,10 @@ func newNodeServer(x uint32, store *storage.Store, peers *tls.Config) *nodeServe
 	return &nodeServer{x: x, store: store, proofs: newProofVerifier(), peers: peers, now: time.Now}
 }
 
-// PutShare enregistre la part du nœud pour un fichier. La clé qui dépose la première part
-// devient propriétaire du fichier.
+// PutShare enregistre la part du nœud pour une version d'un fichier. La clé qui dépose
+// la première part de la version 1 devient propriétaire du fichier ; une version suivante
+// ne peut être déposée que par le propriétaire ou un utilisateur qui a le droit d'écrire
+// (w), et une version déjà déposée ne peut pas être écrasée par une autre clé.
 func (s *nodeServer) PutShare(ctx context.Context, req *pb.PutShareRequest) (*pb.PutShareResponse, error) {
 	if !storage.ValidFileID(req.FileId) {
 		return nil, status.Error(codes.InvalidArgument, "identifiant de fichier invalide")
@@ -57,18 +59,33 @@ func (s *nodeServer) PutShare(ctx context.Context, req *pb.PutShareRequest) (*pb
 	if err := s.proofs.verify(labelPutShare, s.x, req.FileId, share.Epoch, req.Proof); err != nil {
 		return nil, err
 	}
-	if err := s.store.ClaimOwner(req.FileId, req.Proof.PublicKey); err != nil {
+	version := max(req.Version, 1)
+	author := req.Proof.PublicKey
+
+	if version == 1 {
+		if err := s.store.ClaimOwner(req.FileId, author); err != nil {
+			return nil, storageError(err)
+		}
+	} else if _, err := s.authorize(req.FileId, author, req.Grant, access.Write); err != nil {
+		return nil, err
+	}
+	if err := s.store.ClaimVersion(req.FileId, version, author); err != nil {
+		if errors.Is(err, storage.ErrOwnerMismatch) {
+			return nil, status.Error(codes.PermissionDenied, "version déjà déposée par une autre clé")
+		}
 		return nil, storageError(err)
 	}
 
-	err := s.store.PutShare(req.FileId, storage.Share{X: share.X, Value: share.Value, Epoch: share.Epoch})
+	err := s.store.PutShare(storage.VersionKey(req.FileId, version),
+		storage.Share{X: share.X, Value: share.Value, Epoch: share.Epoch})
 	if err != nil {
 		return nil, storageError(err)
 	}
 	return &pb.PutShareResponse{}, nil
 }
 
-// GetShare renvoie la part du nœud si elle est de l'époque demandée.
+// GetShare renvoie la part du nœud pour une version d'un fichier, si elle est de l'époque
+// demandée et si le demandeur a le droit de lire (r).
 func (s *nodeServer) GetShare(ctx context.Context, req *pb.GetShareRequest) (*pb.GetShareResponse, error) {
 	if !storage.ValidFileID(req.FileId) {
 		return nil, status.Error(codes.InvalidArgument, "identifiant de fichier invalide")
@@ -76,11 +93,11 @@ func (s *nodeServer) GetShare(ctx context.Context, req *pb.GetShareRequest) (*pb
 	if err := s.proofs.verify(labelGetShare, s.x, req.FileId, req.Epoch, req.Proof); err != nil {
 		return nil, err
 	}
-	if err := s.checkReader(req.FileId, req.Proof.PublicKey, req.Grant); err != nil {
+	if _, err := s.authorize(req.FileId, req.Proof.PublicKey, req.Grant, access.Read); err != nil {
 		return nil, err
 	}
 
-	share, err := s.store.Share(req.FileId)
+	share, err := s.store.Share(storage.VersionKey(req.FileId, req.Version))
 	if err != nil {
 		return nil, storageError(err)
 	}
@@ -91,11 +108,12 @@ func (s *nodeServer) GetShare(ctx context.Context, req *pb.GetShareRequest) (*pb
 	return &pb.GetShareResponse{Share: &pb.Share{X: share.X, Value: share.Value, Epoch: share.Epoch}}, nil
 }
 
-// PutBlocks reçoit les blocs d'un fichier un par un et écrit chacun sur le disque dès son
-// arrivée : le fichier n'est jamais chargé entièrement en mémoire. La part du fichier doit
-// avoir été déposée avant les blocs.
+// PutBlocks reçoit les blocs d'une version un par un et écrit chacun sur le disque dès son
+// arrivée : le fichier n'est jamais chargé entièrement en mémoire. La part de la version
+// doit avoir été déposée avant les blocs, par la même clé.
 func (s *nodeServer) PutBlocks(stream pb.Node_PutBlocksServer) error {
-	var fileID string
+	var fileID, key string
+	var version uint32
 	var epoch uint64
 	var stored uint32
 
@@ -112,7 +130,9 @@ func (s *nodeServer) PutBlocks(stream pb.Node_PutBlocksServer) error {
 			if !storage.ValidFileID(block.FileId) {
 				return status.Error(codes.InvalidArgument, "identifiant de fichier invalide")
 			}
-			share, err := s.store.Share(block.FileId)
+			version = max(block.Version, 1)
+			key = storage.VersionKey(block.FileId, version)
+			share, err := s.store.Share(key)
 			if errors.Is(err, storage.ErrNotFound) {
 				return status.Error(codes.FailedPrecondition, "la part du fichier doit être déposée avant ses blocs")
 			}
@@ -120,24 +140,28 @@ func (s *nodeServer) PutBlocks(stream pb.Node_PutBlocksServer) error {
 				return storageError(err)
 			}
 			fileID, epoch = block.FileId, share.Epoch
-		} else if block.FileId != fileID {
-			return status.Error(codes.InvalidArgument, "un flux ne peut contenir les blocs que d'un seul fichier")
+		} else if block.FileId != fileID || max(block.Version, 1) != version {
+			return status.Error(codes.InvalidArgument, "un flux ne peut contenir les blocs que d'une seule version")
 		}
 
 		if err := s.proofs.verify(labelPutBlocks, s.x, fileID, epoch, block.Proof); err != nil {
 			return err
 		}
-		if err := s.checkOwner(fileID, block.Proof.PublicKey); err != nil {
-			return err
+		author, err := s.store.VersionAuthor(fileID, version)
+		if err != nil {
+			return storageError(err)
 		}
-		if err := s.store.PutBlock(fileID, block.Index, bytes.NewReader(block.Data)); err != nil {
+		if !slices.Equal(author, block.Proof.PublicKey) {
+			return status.Error(codes.PermissionDenied, "seul l'auteur de la version peut en déposer les blocs")
+		}
+		if err := s.store.PutBlock(key, block.Index, bytes.NewReader(block.Data)); err != nil {
 			return storageError(err)
 		}
 		stored++
 	}
 }
 
-// GetBlocks renvoie les blocs d'un fichier dans l'ordre, en lisant un bloc à la fois.
+// GetBlocks renvoie les blocs d'une version dans l'ordre, en lisant un bloc à la fois.
 func (s *nodeServer) GetBlocks(req *pb.GetBlocksRequest, stream pb.Node_GetBlocksServer) error {
 	if !storage.ValidFileID(req.FileId) {
 		return status.Error(codes.InvalidArgument, "identifiant de fichier invalide")
@@ -145,16 +169,17 @@ func (s *nodeServer) GetBlocks(req *pb.GetBlocksRequest, stream pb.Node_GetBlock
 	if err := s.proofs.verify(labelGetBlocks, s.x, req.FileId, 0, req.Proof); err != nil {
 		return err
 	}
-	if err := s.checkReader(req.FileId, req.Proof.PublicKey, req.Grant); err != nil {
+	if _, err := s.authorize(req.FileId, req.Proof.PublicKey, req.Grant, access.Read); err != nil {
 		return err
 	}
 
-	indexes, err := s.store.BlockIndexes(req.FileId)
+	key := storage.VersionKey(req.FileId, req.Version)
+	indexes, err := s.store.BlockIndexes(key)
 	if err != nil {
 		return storageError(err)
 	}
 	for _, index := range indexes {
-		r, err := s.store.OpenBlock(req.FileId, index)
+		r, err := s.store.OpenBlock(key, index)
 		if err != nil {
 			return storageError(err)
 		}
@@ -163,7 +188,8 @@ func (s *nodeServer) GetBlocks(req *pb.GetBlocksRequest, stream pb.Node_GetBlock
 		if err != nil {
 			return status.Errorf(codes.Internal, "lecture du bloc %d : %v", index, err)
 		}
-		if err := stream.Send(&pb.Block{FileId: req.FileId, Index: index, Data: data}); err != nil {
+		block := &pb.Block{FileId: req.FileId, Index: index, Data: data, Version: max(req.Version, 1)}
+		if err := stream.Send(block); err != nil {
 			return err
 		}
 	}
@@ -200,46 +226,59 @@ func (s *nodeServer) DeliverSubShares(ctx context.Context, req *pb.DeliverSubSha
 	return &pb.DeliverSubSharesResponse{}, nil
 }
 
-// checkReader vérifie que publicKey peut lire le fichier : c'est le propriétaire, ou
-// le destinataire d'une autorisation signée par le propriétaire, valable et non révoquée.
-// Le coordinateur ne peut pas fabriquer une telle autorisation : il n'a pas la clé
-// privée du propriétaire.
-func (s *nodeServer) checkReader(fileID string, publicKey []byte, grant *pb.Grant) error {
-	owner, err := s.store.Owner(fileID)
+// accessContext rassemble ce que le nœud sait d'un fichier pour vérifier une autorisation :
+// propriétaires successifs et retraits d'accès enregistrés.
+func (s *nodeServer) accessContext(fileID string) (access.Context, error) {
+	stored, err := s.store.Owners(fileID)
 	if err != nil {
-		return storageError(err)
+		return access.Context{}, storageError(err)
 	}
-	if slices.Equal(owner, publicKey) {
-		return nil
+	owners := make([]access.Owner, len(stored))
+	for i, o := range stored {
+		owners[i] = access.Owner{Key: o.Key, Until: o.Until}
 	}
-	if grant == nil {
-		return status.Error(codes.PermissionDenied, "accès refusé à ce fichier")
-	}
-	if err := access.VerifyGrantFor(grant, fileID, owner, publicKey, s.now()); err != nil {
-		return status.Errorf(codes.PermissionDenied, "autorisation refusée : %v", err)
-	}
-	revokedAt, revoked, err := s.store.RevokedAt(fileID, publicKey)
-	if err != nil {
-		return storageError(err)
-	}
-	if revoked && grant.IssuedAt <= revokedAt {
-		return status.Error(codes.PermissionDenied, "accès retiré par le propriétaire")
-	}
-	return nil
+	return access.Context{
+		FileID: fileID,
+		Owners: owners,
+		RevokedAt: func(grantee []byte) (int64, bool, error) {
+			return s.store.RevokedAt(fileID, grantee)
+		},
+		Now: s.now(),
+	}, nil
 }
 
-// Revoke enregistre le retrait d'un accès. La révocation se suffit à elle-même : elle
-// est signée par le propriétaire du fichier, et la rejouer ne change rien.
+// authorize vérifie que publicKey a les droits want sur le fichier : c'est le propriétaire,
+// ou le détenteur d'une autorisation dont toute la chaîne remonte au propriétaire, valable
+// et non retirée. Le coordinateur ne peut pas fabriquer une telle autorisation : il n'a la
+// clé privée de personne.
+func (s *nodeServer) authorize(fileID string, publicKey []byte, grant *pb.Grant, want uint32) (uint32, error) {
+	c, err := s.accessContext(fileID)
+	if err != nil {
+		return 0, err
+	}
+	rights, err := access.Authorize(publicKey, grant, want, c)
+	if err != nil {
+		if grant == nil {
+			return 0, status.Error(codes.PermissionDenied, "accès refusé à ce fichier")
+		}
+		return 0, status.Errorf(codes.PermissionDenied, "autorisation refusée : %v", err)
+	}
+	return rights, nil
+}
+
+// Revoke enregistre le retrait d'un accès. La révocation se suffit à elle-même : elle est
+// signée par le propriétaire ou par un utilisateur qui a le droit de gérer les accès (m),
+// et la rejouer ne change rien.
 func (s *nodeServer) Revoke(ctx context.Context, req *pb.RevokeRequest) (*pb.RevokeResponse, error) {
 	r := req.Revocation
 	if r == nil || !storage.ValidFileID(r.FileId) {
 		return nil, status.Error(codes.InvalidArgument, "révocation manquante ou fichier invalide")
 	}
-	owner, err := s.store.Owner(r.FileId)
+	c, err := s.accessContext(r.FileId)
 	if err != nil {
-		return nil, storageError(err)
+		return nil, err
 	}
-	if err := access.VerifyRevocation(r, owner); err != nil {
+	if err := access.VerifyRevocation(r, c); err != nil {
 		return nil, status.Errorf(codes.PermissionDenied, "révocation refusée : %v", err)
 	}
 	if err := s.store.PutRevocation(r.FileId, r.GranteePublicKey, r.RevokedAt); err != nil {
@@ -248,16 +287,46 @@ func (s *nodeServer) Revoke(ctx context.Context, req *pb.RevokeRequest) (*pb.Rev
 	return &pb.RevokeResponse{}, nil
 }
 
-// checkOwner vérifie que publicKey est la clé propriétaire du fichier.
-func (s *nodeServer) checkOwner(fileID string, publicKey []byte) error {
-	owner, err := s.store.Owner(fileID)
+// DeleteFile efface toutes les versions d'un fichier : parts et blocs. Il faut être
+// propriétaire ou avoir le droit de supprimer (d).
+func (s *nodeServer) DeleteFile(ctx context.Context, req *pb.DeleteFileRequest) (*pb.DeleteFileResponse, error) {
+	if !storage.ValidFileID(req.FileId) {
+		return nil, status.Error(codes.InvalidArgument, "identifiant de fichier invalide")
+	}
+	if err := s.proofs.verify(labelDelete, s.x, req.FileId, 0, req.Proof); err != nil {
+		return nil, err
+	}
+	if _, err := s.authorize(req.FileId, req.Proof.PublicKey, req.Grant, access.Delete); err != nil {
+		return nil, err
+	}
+	if err := s.store.DeleteFile(req.FileId); err != nil {
+		return nil, storageError(err)
+	}
+	return &pb.DeleteFileResponse{}, nil
+}
+
+// TransferOwnership donne le fichier à un autre utilisateur. Le transfert est signé par le
+// propriétaire actuel ; l'ancien propriétaire est gardé dans l'historique pour que les
+// autorisations qu'il a signées avant restent valables.
+func (s *nodeServer) TransferOwnership(ctx context.Context, req *pb.TransferRequest) (*pb.TransferResponse, error) {
+	t := req.Transfer
+	if t == nil || !storage.ValidFileID(t.FileId) {
+		return nil, status.Error(codes.InvalidArgument, "transfert manquant ou fichier invalide")
+	}
+	c, err := s.accessContext(t.FileId)
 	if err != nil {
-		return storageError(err)
+		return nil, err
 	}
-	if !slices.Equal(owner, publicKey) {
-		return status.Error(codes.PermissionDenied, "accès refusé à ce fichier")
+	if bytes.Equal(access.CurrentOwner(c.Owners), t.NewOwnerPublicKey) {
+		return &pb.TransferResponse{}, nil // déjà fait : rejouer ne change rien
 	}
-	return nil
+	if err := access.VerifyTransfer(t, c); err != nil {
+		return nil, status.Errorf(codes.PermissionDenied, "transfert refusé : %v", err)
+	}
+	if err := s.store.TransferOwner(t.FileId, t.NewOwnerPublicKey, t.TransferredAt); err != nil {
+		return nil, storageError(err)
+	}
+	return &pb.TransferResponse{}, nil
 }
 
 // storageError traduit une erreur du stockage en erreur gRPC.

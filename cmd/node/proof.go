@@ -19,6 +19,7 @@ const (
 	labelGetShare  = "safevault/getshare/v1"
 	labelPutBlocks = "safevault/putblocks/v1"
 	labelGetBlocks = "safevault/getblocks/v1"
+	labelDelete    = "safevault/delete/v1"
 )
 
 // proofMaxAge est l'écart maximal accepté entre l'horodatage d'une preuve et l'heure du nœud.
