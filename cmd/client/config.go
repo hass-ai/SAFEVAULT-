@@ -1,21 +1,52 @@
 package main
 
-import "os"
+import (
+	"os"
+	"path/filepath"
+)
 
+// Config est la configuration du client, lue dans l'environnement.
 type Config struct {
-	Username        string // nom du client
+	Home            string // dossier du client : clés et session
+	Username        string // utilisateur pour les scripts (connexion automatique)
 	CoordinatorAddr string // adresse du coordinateur
 	CACertPath      string // certificat de la CA
-	KeyPath         string // clé privée Ed25519
+	KeyPath         string // clé privée imposée (sinon <Home>/keys/<utilisateur>.key)
 }
 
 func LoadConfig() Config {
+	home := os.Getenv("SAFEVAULT_HOME")
+	if home == "" {
+		if dir, err := os.UserHomeDir(); err == nil {
+			home = filepath.Join(dir, ".safevault")
+		} else {
+			home = ".safevault"
+		}
+	}
 	return Config{
-		Username:        getEnv("CLIENT_USERNAME", ""),
+		Home:            home,
+		Username:        os.Getenv("CLIENT_USERNAME"),
 		CoordinatorAddr: getEnv("COORD_ADDR", "localhost:7443"),
 		CACertPath:      getEnv("CA_PATH", "certs/ca.crt"),
-		KeyPath:         getEnv("KEY_PATH", "certs/client.key"),
+		KeyPath:         os.Getenv("KEY_PATH"),
 	}
+}
+
+// keyPath renvoie le chemin de la clé privée de l'utilisateur.
+func (c Config) keyPath(username string) string {
+	if c.KeyPath != "" {
+		return c.KeyPath
+	}
+	return filepath.Join(c.Home, "keys", username+".key")
+}
+
+// sessionPath renvoie le chemin du fichier de session. Avec KEY_PATH, la session est
+// rangée à côté de la clé : plusieurs utilisateurs peuvent travailler sur la même machine.
+func (c Config) sessionPath() string {
+	if c.KeyPath != "" {
+		return c.KeyPath + ".session"
+	}
+	return filepath.Join(c.Home, "session")
 }
 
 // getEnv renvoie la variable d'environnement name, ou defaultValue si elle est vide.

@@ -24,34 +24,35 @@ import (
 // errEpochChanged signale qu'un renouvellement a eu lieu pendant la récupération.
 var errEpochChanged = errors.New("l'époque a changé pendant la récupération")
 
-// runDownload récupère le fichier fileID, le déchiffre et l'écrit dans output.
-func runDownload(cfg Config, fileID, output string) error {
-	privateKey, err := loadKey(cfg.KeyPath)
+// runDownload récupère une version du fichier ref (0 = la version actuelle), la déchiffre
+// et l'écrit dans output (par défaut : son nom, dans le dossier courant).
+func runDownload(cfg Config, ref, output string, version uint32, force bool) error {
+	a, err := open(cfg, 5*time.Minute)
 	if err != nil {
 		return err
 	}
+	defer a.close()
 
-	coordinator, conn, err := connectCoordinator(cfg)
+	f, name, err := a.resolve(ref)
 	if err != nil {
 		return err
 	}
-	defer conn.Close()
-
-	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
-	defer cancel()
-	authCtx, err := login(ctx, cfg, coordinator)
-	if err != nil {
-		return err
+	if output == "" {
+		output = filepath.Base(name)
 	}
+	if _, err := os.Stat(output); err == nil && !force {
+		return fmt.Errorf("%s existe déjà : choisissez une autre sortie (-o) ou ajoutez --force", output)
+	}
+	fileID := f.FileId
 
 	var file *pb.GetFileResponse
 	var secret *edwards25519.Scalar
 	for attempt := 1; ; attempt++ {
-		file, err = coordinator.GetFile(authCtx, &pb.GetFileRequest{FileId: fileID})
+		file, err = a.coord.GetFile(a.ctx, &pb.GetFileRequest{FileId: fileID, Version: version})
 		if err != nil {
-			return fmt.Errorf("GetFile : %w", err)
+			return err
 		}
-		secret, err = collectSecret(ctx, cfg, privateKey, fileID, file)
+		secret, err = collectSecret(a.ctx, cfg, a.key, fileID, file)
 		if err == nil {
 			break
 		}
@@ -65,56 +66,58 @@ func runDownload(cfg Config, fileID, output string) error {
 	secretBytes := secret.Bytes()
 	defer clear(secretBytes)
 
-	key, err := crypto.DeriveFileKey(secretBytes, []byte(fileID))
+	label := crypto.VersionContext(fileID, file.Version)
+	key, err := crypto.DeriveFileKey(secretBytes, label)
 	if err != nil {
 		return err
 	}
 	defer clear(key)
 
-	fileCipher, err := crypto.NewFileCipher(key, []byte(fileID))
+	fileCipher, err := crypto.NewFileCipher(key, label)
 	if err != nil {
 		return err
 	}
 
-	blocks, err := fetchBlocks(ctx, cfg, privateKey, fileID, file)
+	blocks, err := fetchBlocks(a.ctx, cfg, a.key, fileID, file)
 	if err != nil {
 		return err
 	}
-
-	if err := writeDecrypted(fileCipher, blocks, output); err != nil {
+	size, err := writeDecrypted(fileCipher, blocks, output)
+	if err != nil {
 		return err
 	}
-	fmt.Println("Fichier récupéré :", output)
+	success("%s récupéré dans %s (version %d sur %d, %s)", bold(name), output, file.Version, file.CurrentVersion,
+		humanSize(uint64(size)))
 	return nil
 }
 
 // writeDecrypted déchiffre les blocs, retire le remplissage, et écrit le résultat dans un
 // fichier temporaire renommé ensuite en output : en cas d'erreur, aucun fichier à moitié
 // déchiffré n'est laissé.
-func writeDecrypted(fileCipher *crypto.FileCipher, blocks [][]byte, output string) error {
+func writeDecrypted(fileCipher *crypto.FileCipher, blocks [][]byte, output string) (int, error) {
 	var padded bytes.Buffer
 	if err := fileCipher.DecryptBlocks(blocks, &padded); err != nil {
-		return fmt.Errorf("déchiffrement impossible (part ou bloc incorrect) : %w", err)
+		return 0, fmt.Errorf("déchiffrement impossible (part ou bloc incorrect) : %w", err)
 	}
 	data, err := crypto.Unpad(padded.Bytes())
 	if err != nil {
-		return err
+		return 0, err
 	}
 
 	tmp, err := os.CreateTemp(filepath.Dir(output), ".safevault-*")
 	if err != nil {
-		return err
+		return 0, err
 	}
 	defer os.Remove(tmp.Name()) // sans effet si le renommage a réussi
 
 	if _, err := tmp.Write(data); err != nil {
 		tmp.Close()
-		return err
+		return 0, err
 	}
 	if err := tmp.Close(); err != nil {
-		return err
+		return 0, err
 	}
-	return os.Rename(tmp.Name(), output)
+	return len(data), os.Rename(tmp.Name(), output)
 }
 
 // collectSecret demande leur part aux nœuds jusqu'à en avoir t de la même époque, puis reconstruit le secret.
@@ -132,12 +135,12 @@ func collectSecret(ctx context.Context, cfg Config, key ed25519.PrivateKey, file
 		if len(shares) == int(file.T) {
 			break
 		}
-		share, err := getShare(ctx, cfg, key, fileID, file.Epoch, info, file.Grant)
+		share, err := getShare(ctx, cfg, key, fileID, file.Epoch, file.Version, info, file.Grant)
 		if status.Code(err) == codes.FailedPrecondition {
 			return nil, errEpochChanged
 		}
 		if err != nil {
-			fmt.Printf("nœud %s ignoré : %v\n", info.Address, err)
+			warn("nœud %s ignoré : %s", info.Address, describe(err))
 			continue
 		}
 		if share.Epoch != file.Epoch {
@@ -164,7 +167,7 @@ func collectSecret(ctx context.Context, cfg Config, key ed25519.PrivateKey, file
 // getShare demande à un nœud sa part de la clé pour l'époque donnée. grant est l'autorisation
 // du propriétaire quand le fichier est partagé avec nous (nil pour le propriétaire).
 func getShare(ctx context.Context, cfg Config, key ed25519.PrivateKey, fileID string, epoch uint64,
-	info *pb.NodeInfo, grant *pb.Grant) (*pb.Share, error) {
+	version uint32, info *pb.NodeInfo, grant *pb.Grant) (*pb.Share, error) {
 
 	node, conn, err := connectNode(cfg, info.Address)
 	if err != nil {
@@ -176,10 +179,11 @@ func getShare(ctx context.Context, cfg Config, key ed25519.PrivateKey, fileID st
 	defer cancel()
 
 	resp, err := node.GetShare(ctx, &pb.GetShareRequest{
-		FileId: fileID,
-		Epoch:  epoch,
-		Proof:  proof(key, "safevault/getshare/v1", info.X, fileID, epoch),
-		Grant:  grant,
+		FileId:  fileID,
+		Epoch:   epoch,
+		Proof:   proof(key, "safevault/getshare/v1", info.X, fileID, epoch),
+		Grant:   grant,
+		Version: version,
 	})
 	if err != nil {
 		return nil, err
@@ -192,18 +196,20 @@ func fetchBlocks(ctx context.Context, cfg Config, key ed25519.PrivateKey, fileID
 	file *pb.GetFileResponse) ([][]byte, error) {
 
 	for _, info := range file.Nodes {
-		blocks, err := getBlocks(ctx, cfg, key, fileID, info, file.Manifest, file.Grant)
+		blocks, err := getBlocks(ctx, cfg, key, fileID, info, file)
 		if err == nil {
 			return blocks, nil
 		}
-		fmt.Printf("nœud %s ignoré : %v\n", info.Address, err)
+		warn("nœud %s ignoré : %s", info.Address, describe(err))
 	}
 	return nil, errors.New("aucun nœud n'a renvoyé les blocs")
 }
 
 // getBlocks récupère tous les blocs d'un nœud et vérifie chacun avec son empreinte du manifeste.
 func getBlocks(ctx context.Context, cfg Config, key ed25519.PrivateKey, fileID string,
-	info *pb.NodeInfo, manifest *pb.Manifest, grant *pb.Grant) ([][]byte, error) {
+	info *pb.NodeInfo, file *pb.GetFileResponse) ([][]byte, error) {
+
+	manifest, grant := file.Manifest, file.Grant
 
 	node, conn, err := connectNode(cfg, info.Address)
 	if err != nil {
@@ -212,9 +218,10 @@ func getBlocks(ctx context.Context, cfg Config, key ed25519.PrivateKey, fileID s
 	defer conn.Close()
 
 	stream, err := node.GetBlocks(ctx, &pb.GetBlocksRequest{
-		FileId: fileID,
-		Proof:  proof(key, "safevault/getblocks/v1", info.X, fileID, 0),
-		Grant:  grant,
+		FileId:  fileID,
+		Proof:   proof(key, "safevault/getblocks/v1", info.X, fileID, 0),
+		Grant:   grant,
+		Version: file.Version,
 	})
 	if err != nil {
 		return nil, err
