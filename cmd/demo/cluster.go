@@ -219,16 +219,22 @@ func waitListening(addr string, timeout time.Duration) error {
 	return fmt.Errorf("%s ne répond pas", addr)
 }
 
-// client exécute une commande du vrai client SafeVault et renvoie sa sortie.
+// client exécute, au nom d'alice, une commande du vrai client SafeVault et renvoie sa sortie.
 func (c *cluster) client(args ...string) (string, error) {
+	return c.clientAs("alice", args...)
+}
+
+// clientAs exécute une commande du vrai client SafeVault au nom de user, avec sa propre
+// clé (dir/<user>.key), et renvoie sa sortie.
+func (c *cluster) clientAs(user string, args ...string) (string, error) {
 	certs := filepath.Join(c.dir, "certs")
 	cmd := exec.Command(filepath.Join(c.dir, "bin", "client"), args...)
 	cmd.Dir = c.dir
 	cmd.Env = append(os.Environ(),
-		"CLIENT_USERNAME=alice",
+		"CLIENT_USERNAME="+user,
 		"COORD_ADDR="+c.coord.addr,
 		"CA_PATH="+filepath.Join(certs, "ca.crt"),
-		"KEY_PATH="+filepath.Join(c.dir, "alice.key"),
+		"KEY_PATH="+c.userKeyPath(user),
 	)
 	out, err := cmd.CombinedOutput()
 	return strings.TrimSpace(string(out)), err
@@ -330,4 +336,9 @@ func (c *cluster) readBlock(x int, fileID string, index int) ([]byte, error) {
 func fingerprint(value []byte) string {
 	h := sha256.Sum256(value)
 	return hex.EncodeToString(h[:4])
+}
+
+// userKeyPath renvoie le chemin de la clé privée de l'utilisateur de démo user.
+func (c *cluster) userKeyPath(user string) string {
+	return filepath.Join(c.dir, user+".key")
 }

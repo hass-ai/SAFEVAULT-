@@ -36,6 +36,10 @@ const (
 	demoT = 3
 )
 
+// demoUsers sont les utilisateurs de la démo : alice dépose, bob reçoit un partage,
+// charlie n'a aucun droit.
+var demoUsers = []string{"alice", "bob", "charlie"}
+
 // event est une ligne du journal affiché sur la page.
 type event struct {
 	Time string `json:"time"`
@@ -81,11 +85,13 @@ func main() {
 	defer c.stop()
 
 	a := &app{c: c, compromised: map[int]uint64{}}
-	if out, err := c.client("register"); err != nil {
-		c.stop()
-		log.Fatalf("inscription de l'utilisatrice alice : %v\n%s", err, out)
+	for _, user := range demoUsers {
+		if out, err := c.clientAs(user, "register"); err != nil {
+			c.stop()
+			log.Fatalf("inscription de %s : %v\n%s", user, err, out)
+		}
 	}
-	a.logf("info", "Système démarré : coordinateur et %d nœuds, seuil t = %d. Utilisatrice « alice » inscrite.", demoN, demoT)
+	a.logf("info", "Système démarré : coordinateur et %d nœuds, seuil t = %d. Utilisateurs inscrits : alice, bob, charlie (chacun sa paire de clés).", demoN, demoT)
 
 	staticFS, _ := fs.Sub(static, "static")
 	mux := http.NewServeMux()
@@ -130,15 +136,16 @@ type nodeView struct {
 }
 
 type stateView struct {
-	Nodes   []nodeView     `json:"nodes"`
-	Epoch   uint64         `json:"epoch"`
-	T       int            `json:"t"`
-	File    string         `json:"file"`
-	Size    int            `json:"size"`
-	Busy    string         `json:"busy"`
-	Events  []event        `json:"events"`
-	Stolen  []stolenShare  `json:"stolen"`
-	Outcome *attackOutcome `json:"outcome"`
+	Coordinator coordinatorView `json:"coordinator"`
+	Nodes       []nodeView      `json:"nodes"`
+	Epoch       uint64          `json:"epoch"`
+	T           int             `json:"t"`
+	File        string          `json:"file"`
+	Size        int             `json:"size"`
+	Busy        string          `json:"busy"`
+	Events      []event         `json:"events"`
+	Stolen      []stolenShare   `json:"stolen"`
+	Outcome     *attackOutcome  `json:"outcome"`
 }
 
 func (a *app) handleState(w http.ResponseWriter, r *http.Request) {
@@ -155,6 +162,7 @@ func (a *app) handleState(w http.ResponseWriter, r *http.Request) {
 	}
 	a.mu.Unlock()
 
+	view.Coordinator, _ = a.c.readCoordinator()
 	for x := 1; x <= demoN; x++ {
 		nv := nodeView{X: x, Name: nodeName(x), Up: a.c.nodes[x-1].running()}
 		if epoch, ok := compromised[x]; ok {
@@ -202,6 +210,16 @@ func (a *app) handleAction(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		run = func() { a.toggleNode(x, action == "start") }
+	case "share":
+		run = a.share
+	case "download-bob":
+		run = func() { a.downloadAs("bob") }
+	case "download-charlie":
+		run = func() { a.downloadAs("charlie") }
+	case "forge":
+		run = a.forge
+	case "revoke":
+		run = a.revoke
 	case "attack-norenew":
 		run = func() { a.attack(false) }
 	case "attack-renew":
@@ -291,6 +309,106 @@ func (a *app) download() {
 		return
 	}
 	a.logf("ok", "Fichier récupéré et identique à l'original (%d Ko).", len(got)/1000)
+}
+
+// ---------- Partage ----------
+
+// currentFile renvoie le fichier déposé et son contenu d'origine.
+func (a *app) currentFile() (string, []byte) {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	return a.fileID, a.original
+}
+
+func (a *app) share() {
+	fileID, _ := a.currentFile()
+	if fileID == "" {
+		a.logf("err", "Déposez d'abord un fichier.")
+		return
+	}
+	a.logf("step", "Alice partage le fichier avec bob : elle demande la clé publique de bob, en vérifie l'empreinte, signe une autorisation pour cette clé et rechiffre le nom du fichier pour bob.")
+	out, err := a.c.clientAs("alice", "share", fileID, "bob")
+	if err != nil {
+		a.logf("err", "Partage refusé : %s", lastLine(out))
+		return
+	}
+	for _, line := range strings.Split(out, "\n") {
+		if strings.HasPrefix(line, "Empreinte") {
+			a.logf("info", "%s", line)
+		}
+	}
+	a.logf("ok", "%s", lastLine(out))
+}
+
+func (a *app) downloadAs(user string) {
+	fileID, original := a.currentFile()
+	if fileID == "" {
+		a.logf("err", "Déposez d'abord un fichier.")
+		return
+	}
+	a.logf("step", "%s essaie de récupérer le fichier d'alice.", user)
+	path := filepath.Join(a.c.dir, "recupere-"+user+".txt")
+	os.Remove(path)
+	out, err := a.c.clientAs(user, "download", fileID, path)
+	if err != nil {
+		a.logf("ok", "%s est refusé : %s", user, readableError(lastLine(out)))
+		return
+	}
+	got, err := os.ReadFile(path)
+	if err != nil || !bytes.Equal(got, original) {
+		a.logf("err", "Le fichier récupéré par %s ne correspond pas à l'original.", user)
+		return
+	}
+	a.logf("ok", "%s a récupéré le fichier, identique à l'original : les nœuds ont accepté l'autorisation signée par alice.", user)
+}
+
+func (a *app) forge() {
+	fileID, _ := a.currentFile()
+	if fileID == "" {
+		a.logf("err", "Déposez d'abord un fichier.")
+		return
+	}
+	var epoch uint64
+	if shares, err := a.c.readShares(1); err == nil {
+		for _, sh := range shares {
+			if sh.FileID == fileID {
+				epoch = sh.Epoch
+			}
+		}
+	}
+	a.logf("attack", "COORDINATEUR COMPROMIS : il fabrique une autorisation « au nom d'alice » pour charlie, mais ne peut la signer qu'avec sa propre clé. Charlie la présente aux nœuds.")
+	answers, err := a.c.forgedGrantAttempt(fileID, epoch)
+	if err != nil {
+		a.logf("err", "Tentative impossible : %v", err)
+		return
+	}
+	for _, line := range answers {
+		a.logf("attack", "%s", line)
+	}
+	if allRefused(answers) {
+		a.logf("ok", "Tous les nœuds refusent : sans la clé privée d'alice, personne ne peut fabriquer une autorisation, pas même le coordinateur.")
+	} else {
+		a.logf("err", "Un nœud a accepté l'autorisation fabriquée.")
+	}
+}
+
+func (a *app) revoke() {
+	fileID, _ := a.currentFile()
+	if fileID == "" {
+		a.logf("err", "Déposez d'abord un fichier.")
+		return
+	}
+	a.logf("step", "Alice retire l'accès de bob : une révocation signée part vers chaque nœud, puis le partage est retiré chez le coordinateur.")
+	out, err := a.c.clientAs("alice", "revoke", fileID, "bob")
+	if err != nil {
+		a.logf("err", "Révocation impossible : %s", lastLine(out))
+		return
+	}
+	for _, line := range strings.Split(out, "\n") {
+		if line != "" {
+			a.logf("ok", "%s", line)
+		}
+	}
 }
 
 func (a *app) renew() bool {
@@ -410,6 +528,14 @@ func (a *app) tryAndReport(fileID string, block []byte, final bool) {
 		return
 	}
 	a.logf("ok", "%d parts volées, %d combinaisons de %d essayées : AUCUNE ne déchiffre le fichier. Les parts d'époques différentes sont incompatibles.", len(stolen), outcome.Tried, demoT)
+}
+
+// readableError garde le message utile d'une erreur gRPC affichée par le client.
+func readableError(line string) string {
+	if i := strings.LastIndex(line, "desc = "); i >= 0 {
+		return line[i+len("desc = "):]
+	}
+	return strings.TrimPrefix(line, "erreur : ")
 }
 
 func lastLine(s string) string {

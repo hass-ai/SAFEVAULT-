@@ -72,6 +72,13 @@
   .verdict small { display: block; font-weight: 400; margin-top: 6px; color: var(--ink); font-family: ui-monospace, Menlo, monospace; font-size: 12px; }
   .explain { color: var(--muted); font-size: 13px; margin-top: 12px; }
 
+  .actions-row { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 12px; }
+  .access { font-size: 14px; color: var(--muted); }
+  .access b { color: var(--ink); }
+  table.coord { width: 100%; border-collapse: collapse; font-size: 13px; }
+  table.coord th { text-align: left; color: var(--muted); font-weight: 600; padding: 4px 6px; border-bottom: 1px solid var(--line); }
+  table.coord td { padding: 6px; border-bottom: 1px solid var(--line); vertical-align: top; }
+  table.coord code { font-family: ui-monospace, Menlo, monospace; font-size: 12px; word-break: break-all; }
   .log { list-style: none; margin: 0; padding: 0; max-height: 420px; overflow-y: auto; }
   .log li { padding: 7px 0 7px 12px; border-left: 3px solid var(--line); margin-bottom: 4px; font-size: 14px; }
   .log time { color: var(--muted); font-size: 12px; margin-right: 6px; font-variant-numeric: tabular-nums; }
@@ -107,6 +114,28 @@
 
   <section class="nodes" id="nodes"></section>
 
+  <div class="grid2" style="margin-bottom:16px">
+    <section class="card">
+      <h2>Partage entre utilisateurs</h2>
+      <p class="explain" style="margin-top:0">Alice dépose ; bob reçoit un partage ; charlie n'a aucun droit.
+        Les nœuds n'acceptent qu'une autorisation <b>signée par alice</b>.</p>
+      <div class="actions-row">
+        <button data-do="share">Alice partage avec bob</button>
+        <button data-do="download-bob">Bob récupère</button>
+        <button data-do="download-charlie">Charlie récupère</button>
+        <button class="attack" data-do="forge">Coordinateur tricheur</button>
+        <button data-do="revoke">Alice retire l'accès de bob</button>
+      </div>
+      <div class="access" id="access"></div>
+    </section>
+    <section class="card">
+      <h2>Ce que voit le coordinateur</h2>
+      <p class="explain" style="margin-top:0">Contenu de sa base : le nom des fichiers est chiffré,
+        la taille arrondie. Il ne voit ni clé, ni part, ni contenu.</p>
+      <table class="coord" id="coord"></table>
+    </section>
+  </div>
+
   <div class="grid2">
     <section class="card">
       <h2>Attaquant mobile</h2>
@@ -128,6 +157,8 @@ const $ = (id) => document.getElementById(id);
 const labels = {
   upload: "Dépôt en cours…", download: "Récupération en cours…", renew: "Renouvellement en cours…",
   stop: "Arrêt du nœud…", start: "Redémarrage du nœud…",
+  share: "Partage en cours…", "download-bob": "Bob récupère…", "download-charlie": "Charlie essaie…",
+  forge: "Le coordinateur triche…", revoke: "Retrait de l'accès…",
   "attack-norenew": "Attaque en cours…", "attack-renew": "Attaque en cours…",
 };
 let previous = {};
@@ -178,6 +209,15 @@ function render(s) {
   $("verdict").innerHTML = !o ? "" : o.success
     ? `<div class="verdict win">Clé retrouvée : le fichier est lu par l'attaquant.<small>${esc(o.leaked.split("\n").slice(0, 2).join(" / "))}…</small></div>`
     : `<div class="verdict lose">Échec de l'attaquant : ${o.tried} combinaisons essayées, aucune ne déchiffre le fichier.</div>`;
+
+  const c = s.coordinator || { files: [], shares: [] };
+  $("access").innerHTML = s.file
+    ? "Accès au fichier : <b>alice</b> (propriétaire)" + (c.shares && c.shares.length ? ", <b>" + c.shares.map(esc).join("</b>, <b>") + "</b>" : "") + "."
+    : "Déposez d'abord un fichier.";
+  $("coord").innerHTML = c.files && c.files.length
+    ? "<tr><th>Fichier</th><th>Propriétaire</th><th>Nom stocké</th><th>Taille</th></tr>" +
+      c.files.map((f) => `<tr><td><code>${esc(f.fileId.slice(0, 10))}…</code></td><td>${esc(f.owner)}</td><td><code>${esc(f.name)}</code></td><td>${Math.round(f.size / 1024)} Kio</td></tr>`).join("")
+    : `<tr><td class="empty">Aucun fichier.</td></tr>`;
 
   $("log").innerHTML = s.events.slice().reverse()
     .map((e) => `<li class="${e.kind}"><time>${e.time}</time>${esc(e.text)}</li>`).join("");

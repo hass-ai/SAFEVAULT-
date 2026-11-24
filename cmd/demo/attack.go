@@ -82,6 +82,10 @@ func decryptFirstBlock(secret *edwards25519.Scalar, fileID string, block []byte)
 	// Le premier bloc est aussi le dernier pour un petit fichier.
 	for _, last := range []bool{true, false} {
 		if plain, err := fc.OpenBlock(0, last, block); err == nil {
+			// Le contenu commence par l'en-tête de remplissage (taille réelle).
+			if data, err := crypto.Unpad(plain); err == nil {
+				return data, true
+			}
 			return plain, true
 		}
 	}
