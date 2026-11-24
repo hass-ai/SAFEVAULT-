@@ -1,7 +1,7 @@
 # Modèle de métadonnées du coordinateur (SV-39)
 
 Base SQLite du coordinateur : `DATA_DIR/coordinator.db`, gérée par `internal/metadata`.
-Version du schéma : **1** (`PRAGMA user_version`). Le code de référence est
+Version du schéma : **2** (`PRAGMA user_version`). La version 2 ajoute la table `grants` (partages) ; une base en version 1 est migrée automatiquement au démarrage. Le code de référence est
 `internal/metadata/schema.go` ; ce document l'explique.
 
 ## Ce que le coordinateur ne stocke jamais (G3, G10)
@@ -37,6 +37,7 @@ users ─┬─< challenges          nodes ─< file_nodes >─ files ─── 
 | `file_nodes` | Nœuds qui détiennent une part du fichier (« share_index ») | `(file_id, node_x)` ; la **valeur** de la part n'y est jamais |
 | `manifests` | Manifeste public d'un fichier confirmé | `block_count`, `nonce_prefix` (vide avec la version actuelle de `internal/crypto`), `size` |
 | `blocks` | Empreinte de chaque bloc chiffré | `(file_id, idx)`, `sha256` |
+| `grants` | Partages (version 2) | `(file_id, grantee_id)`, `signed_grant` (autorisation signée par le propriétaire), `encrypted_name` (nom chiffré pour le destinataire) |
 
 Les dates sont des secondes Unix. Les clés étrangères sont activées (`foreign_keys=ON`).
 
@@ -48,8 +49,8 @@ Les dates sont des secondes Unix. Les clés étrangères sont activées (`foreig
   globale seule ne dirait pas à quelle époque demander la part d'un fichier déposé
   pendant un renouvellement. Le gestionnaire d'époques (SV-21, SV-56) mettra cette
   colonne à jour au commit.
-- **`files.name` en BLOB** : le contrat actuel envoie le nom en clair. Le BLOB permettra
-  de stocker un nom chiffré côté client (SV-73) sans changer le schéma.
+- **`files.name` en BLOB** : le client envoie un nom chiffré, que le coordinateur stocke
+  sans pouvoir le lire (SV-73, voir `docs/partage.md`).
 - **Fichier `pending`** : créé par `CreateFile`, devient `ready` à `ConfirmUpload`.
   `ListFiles` ne montre que les fichiers `ready`. Un dépôt jamais confirmé est supprimé
   au bout d'une heure.
@@ -80,10 +81,10 @@ Les dates sont des secondes Unix. Les clés étrangères sont activées (`foreig
 
 - `placements (file_id, block_index, node_x)` : quels nœuds gardent quel bloc, quand la
   stratégie de réplication sera décidée (SV-50). Aujourd'hui chaque bloc va sur les n nœuds.
-- `grants` : autorisations de partage signées par le propriétaire (SV-62).
 
-## Limites actuelles de confidentialité (SV-73)
+## Confidentialité des métadonnées (SV-73)
 
-Le contrat `coordinator.proto` envoie le nom du fichier en clair et sa taille exacte :
-le coordinateur les connaît. Les pistes à valider en équipe sont un nom chiffré côté
-client et une taille arrondie (padding).
+Le coordinateur reçoit un nom chiffré côté client et une taille arrondie (le contenu est
+complété avant chiffrement) : il ne connaît ni le nom ni la taille exacte des fichiers.
+Restent visibles : qui dépose, qui partage avec qui, quand, et combien de fichiers chacun
+possède. Détails dans `docs/partage.md`.

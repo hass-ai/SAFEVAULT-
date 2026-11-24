@@ -52,7 +52,8 @@ go run ./cmd/node
 Ce que fait le nœud aujourd'hui :
 
 - chaque requête du client porte une preuve d'identité signée (Ed25519) : le nœud vérifie la signature, refuse une preuve de plus de 2 minutes ou déjà utilisée ;
-- la clé qui dépose la première part d'un fichier en devient propriétaire : elle seule peut relire la part et les blocs (le partage viendra avec les autorisations signées) ;
+- la clé qui dépose la première part d'un fichier en devient propriétaire. Elle peut relire la part et les blocs, ainsi que les utilisateurs qui présentent une autorisation **signée par le propriétaire**, valable et non révoquée (voir [docs/partage.md](docs/partage.md)) ;
+- `Revoke` enregistre un retrait d'accès signé par le propriétaire ;
 - la part doit être déposée avant les blocs ;
 - les blocs sont écrits sur le disque un par un, à leur arrivée, sans charger le fichier entier en mémoire ;
 - les anciennes parts sont effacées de la base (`secure_delete`) quand une nouvelle époque est validée ;
@@ -70,6 +71,25 @@ Pour régénérer le code Go après une modification d'un `.proto` : `make proto
 
 Tests : `go test ./...` (ajouter `-short` pour sauter le transfert de 100 Mo).
 
+## Client
+
+```sh
+CLIENT_USERNAME=alice COORD_ADDR=localhost:7443 CA_PATH=certs/ca.crt KEY_PATH=alice.key \
+go run ./cmd/client <commande>
+```
+
+| Commande | Rôle |
+|---|---|
+| `register` | crée la paire de clés de l'utilisateur et l'inscrit |
+| `upload <fichier>` | chiffre le fichier et son nom, le complète jusqu'à une taille arrondie, et le dépose |
+| `download <file_id> <sortie>` | récupère et déchiffre un fichier (à soi ou partagé) |
+| `ls` | liste ses fichiers et ceux qui lui sont partagés, noms déchiffrés localement |
+| `share <file_id> <utilisateur>` | partage un fichier en lecture (affiche l'empreinte de la clé du destinataire) |
+| `revoke <file_id> <utilisateur>` | retire l'accès d'un utilisateur |
+| `whoami` | affiche l'empreinte de sa propre clé |
+
+Le partage et la confidentialité des métadonnées sont décrits dans [docs/partage.md](docs/partage.md).
+
 ## Démo
 
 Une page web montre le système en direct : les 5 nœuds, l'empreinte de leur part (qui change à chaque renouvellement), et l'attaquant mobile.
@@ -85,5 +105,14 @@ La démo compile et lance les vrais programmes (`cmd/coordinator`, 5 × `cmd/nod
 - **Renouveler les parts** : nouvelle époque, toutes les empreintes changent, la clé reste la même ;
 - **Attaque sans renouvellement** : l'attaquant lit le disque de 2 nœuds, puis de 2 autres ; il réunit 3 parts compatibles et lit le fichier ;
 - **Attaque avec renouvellement** : même attaque avec un renouvellement entre les deux ; aucune combinaison de ses 4 parts ne déchiffre le fichier (G2).
+
+Partage entre trois utilisateurs (alice dépose, bob reçoit un partage, charlie n'a aucun droit) :
+
+- **Alice partage avec bob** : autorisation signée par alice, empreinte de la clé de bob affichée ;
+- **Bob récupère** / **Charlie récupère** : bob obtient le fichier identique, charlie est refusé ;
+- **Coordinateur tricheur** : le coordinateur fabrique une autorisation « au nom d'alice » pour charlie ; les 5 nœuds la refusent (signature invalide) ;
+- **Alice retire l'accès de bob** : révocation signée envoyée aux nœuds, bob est ensuite refusé.
+
+Le panneau **Ce que voit le coordinateur** affiche le contenu de sa base : nom de fichier chiffré, taille arrondie, partages en cours.
 
 Variable d'environnement : `DEMO_ADDR` (défaut `localhost:8080`).
